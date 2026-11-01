@@ -33,12 +33,13 @@ export function createChatStore() {
     activeId = id;
   }
 
-  function createChat(roleId = null) {
+  function createChat(roleId = null, projectId = null) {
     const chat = {
       id: uid(),
       title: 'Neuer Chat',
       favorite: false,
       roleId,
+      projectId,
       messages: [],
       createdAt: Date.now(),
       updatedAt: Date.now(),

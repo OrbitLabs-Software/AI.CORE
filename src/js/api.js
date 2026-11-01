@@ -141,6 +141,40 @@ export const api = {
     return res.ok;
   },
 
+  /** Chat als Nur-Lesen-Link teilen; gibt die ID zurück. */
+  async share(chat) {
+    const res = await jsonPost('/api/share', { chat: { title: chat.title, messages: chat.messages.filter(m => !m.media).map(m => ({ role: m.role, content: m.content, attachments: (m.attachments || []).map(a => ({ name: a.name })) })) } });
+    if (!res.ok) throw new ApiError(await errorMessage(res), res.status);
+    return (await res.json()).id;
+  },
+  async unshare(id) { await request(`/api/share/${encodeURIComponent(id)}`, { method: 'DELETE' }); },
+  async getShare(id) {
+    const res = await send(`/api/share/${encodeURIComponent(id)}`);
+    if (!res.ok) throw new ApiError(await errorMessage(res), res.status);
+    return res.json();
+  },
+
+  async image(prompt) {
+    const res = await jsonPost('/api/image', { prompt });
+    if (!res.ok) throw new ApiError(await errorMessage(res), res.status);
+    return (await res.json()).image;
+  },
+  async videoStart(prompt) {
+    const res = await jsonPost('/api/video', { prompt });
+    if (!res.ok) throw new ApiError(await errorMessage(res), res.status);
+    return (await res.json()).id;
+  },
+  async videoStatus(id) {
+    const res = await request(`/api/video/${encodeURIComponent(id)}`);
+    return res.json();
+  },
+  /** Das Video braucht die Anmeldung, daher als Datei laden und lokal abspielen. */
+  async videoBlobUrl(id) {
+    const res = await request(`/api/video/${encodeURIComponent(id)}/file`);
+    if (!res.ok) throw new ApiError(await errorMessage(res), res.status);
+    return URL.createObjectURL(await res.blob());
+  },
+
   /** Vorschau für HTML/SVG: {url} (Server, gleicher Ursprung) oder {srcdoc} (Seite liegt woanders, z. B. GitHub). */
   async preview(kind, code) {
     if (isCrossOrigin()) return { srcdoc: buildPreviewHtml(kind, code) };

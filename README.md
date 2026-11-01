@@ -45,6 +45,12 @@ Chrome und Edge fragen einmal nach dem Zugriff aufs lokale Netzwerk, bitte *Zula
 dafür dem Tiny eine HTTPS-Adresse geben (zum Beispiel mit Tailscale `tailscale serve`) und diese im Anmeldefenster eintragen.
 Die Adresse `http://192.168.1.190:3000` zeigt die Oberfläche weiterhin selbst an und funktioniert immer.
 
+## Bilder, Videos, Teilen
+
+- **Teilen:** Das Teilen-Symbol legt eine Nur-Lesen-Kopie auf dem Server ab (`data/shares`) und kopiert den Link. Wer den Link hat, kann lesen, aber nur, wenn er deinen Server erreicht (Heimnetz oder Tailscale). Dateiinhalte und Bilder werden nicht geteilt. Abschalten mit `SHARING=false`.
+- **Bilder (`/bild ...`) und Videos (`/video ...`):** Der Tiny hat keine Grafikkarte. Trage in der `.env` einen Schlüssel eines Anbieters mit OpenAI-kompatibler Schnittstelle ein (`IMAGE_API_KEY`, `VIDEO_API_KEY`, siehe `.env.example`). Die Beschreibung geht dann ins Internet, und Videos dauern Minuten und kosten beim Anbieter Geld. Ohne Schlüssel bleibt beides aus.
+- **Projekte:** In der Seitenleiste unter „Projekte“. Dateien eines Projekts werden auf rund 12 000 Zeichen gekürzt, damit das lokale Modell noch Platz zum Antworten hat.
+
 ## Funktionen
 
 **Modelle**
@@ -64,6 +70,7 @@ Die Adresse `http://192.168.1.190:3000` zeigt die Oberfläche weiterhin selbst a
 - Gespeichert auf dem Server (`data/memories.json`), pro Konto, auf allen Geräten gleich. Verwalten unter Einstellungen → Erinnerungen.
 
 **Weiteres**
+- Claude-Look (hell/dunkel), Antwortstile, eigene Anweisungen, Diktieren, Daumen-Bewertung.
 - Dateien als Kontext: PDF, DOCX, Text, Code, CSV, JSON; Bilder für Modelle mit Bild-Unterstützung.
 - Rollen (Coder, Übersetzer, Erklärer, Zusammenfasser, Autor) plus eigene Rollen.
 - Befehle mit `/`: `/neu` `/coder` `/rolle` `/merken` `/vergessen` `/export` `/modell` `/hilfe`.

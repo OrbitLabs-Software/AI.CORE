@@ -43,7 +43,7 @@ export function openSettingsModal({ store, initialTab, authRequired, user, onThe
     wrap.appendChild(settingsRow({ label: 'Anzeigename', sub: user ? `Angemeldet als ${escapeHtml(user.email)}` : 'Wird in der Seitenleiste gezeigt', control: nameInput }));
 
     wrap.appendChild(settingsRow({
-      label: 'Dunkles Design', sub: 'Hell oder dunkel, wie auf der OrbitLabs-Webseite',
+      label: 'Dunkles Design', sub: 'Hell (Standard) oder dunkel',
       control: switchControl(settings.theme === 'dark', (on) => { settings.theme = on ? 'dark' : 'light'; save(); onThemeChange(settings.theme); }),
     }));
 
@@ -52,6 +52,12 @@ export function openSettingsModal({ store, initialTab, authRequired, user, onThe
     roleSelect.value = settings.roleId;
     roleSelect.addEventListener('change', () => { settings.roleId = roleSelect.value; save(); onRolesChange(); });
     wrap.appendChild(settingsRow({ label: 'Standard-Rolle', sub: 'Für neue Chats; pro Chat oben änderbar', control: roleSelect }));
+
+    const ins = el('textarea', { className: 'text-input', rows: 4, maxLength: 1500, placeholder: 'z. B. „Duze mich“, „Antworte kurz“, „Ich programmiere in Python“', value: settings.instructions || '' });
+    ins.addEventListener('change', () => { settings.instructions = ins.value.trim(); save(); });
+    const insRow = settingsRow({ label: 'Eigene Anweisungen', sub: 'Gelten in jedem Chat (wie die „Präferenzen“ bei Claude)', control: ins });
+    insRow.style.flexDirection = 'column'; insRow.style.alignItems = 'stretch';
+    wrap.appendChild(insRow);
 
     const temp = el('select', { className: 'set-select' });
     [['', 'Server-Standard'], ['0.2', 'Präzise (0,2)'], ['0.6', 'Ausgewogen (0,6)'], ['1', 'Kreativ (1,0)']]

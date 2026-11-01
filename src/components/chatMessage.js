@@ -6,6 +6,9 @@ const I = {
   edit: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
   speak: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5 6 9H2v6h4l5 4zM15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>',
   stop: '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>',
+  up: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 11v9H3v-9zM7 11l4-8a2 2 0 0 1 2 2v4h6a2 2 0 0 1 2 2l-1.500 7a2 2 0 0 1-2 1.500H7"/></svg>',
+  down: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 13V4h4v9zM17 13l-4 8a2 2 0 0 1-2-2v-4H5a2 2 0 0 1-2-2l1.500-7A2 2 0 0 1 6.500 4H17"/></svg>',
+  doc: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9zM14 3v6h6M8 13h8M8 17h6"/></svg>',
   zip: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v3h16v-3"/></svg>',
 };
 
@@ -27,11 +30,35 @@ function filesRow(attachments) {
     : `<span class="file-chip" ${a.text ? '' : 'title="Kein Text gelesen — die KI sieht nur den Dateinamen"'}>📄 <span class="fc-name">${escapeHtml(a.name)}</span>${a.text ? '' : '<span class="fc-warn">⚠</span>'}</span>`).join('')}</div>`;
 }
 
+const versionSwitch = (m) => {
+  const n = m.versions?.length || 0;
+  if (n < 2) return '';
+  const i = m.vIdx ?? n - 1;
+  return `<span class="vsw"><button type="button" data-act="vprev" aria-label="Vorherige Version" ${i <= 0 ? 'disabled' : ''}>‹</button><span>${i + 1}/${n}</span><button type="button" data-act="vnext" aria-label="Nächste Version" ${i >= n - 1 ? 'disabled' : ''}>›</button></span>`;
+};
 const btn = (act, icon, label, title = label, cls = '') => `<button type="button" data-act="${act}" title="${title}" class="${cls}">${icon} ${label}</button>`;
 
 /**
  * h: { onCopy, onRegenerate, onEdit, onSpeak, onZip, onCode, onSaveMemory, onDismissMemory, speakingId }
  */
+const safeImg = (s) => typeof s === 'string' && /^data:image\/(png|jpe?g|webp);base64,[A-Za-z0-9+/=]+$/.test(s);
+
+/** Erzeugte Bilder und Videos (Befehle /bild und /video). */
+function mediaBlock(message, h) {
+  let out = '';
+  (message.images || []).filter(safeImg).forEach((src, i) => {
+    out += `<figure class="gen-image"><img src="${src}" alt="Erzeugtes Bild" loading="lazy"><a class="btn" href="${src}" download="bild-${i + 1}.jpg">Laden</a></figure>`;
+  });
+  const v = message.video;
+  if (v) {
+    const url = v.state === 'done' ? h.videoUrl?.(v.id) : null;
+    out += v.state === 'failed' ? `<div class="gen-video fail">Das Video hat nicht geklappt${v.error ? `: ${escapeHtml(v.error)}` : '.'}</div>`
+      : url ? `<video class="gen-video" controls playsinline src="${url}"></video><a class="btn" href="${url}" download="video.mp4">Laden</a>`
+        : `<div class="gen-video wait"><i class="gen-spin"></i><span>Video wird erzeugt${v.progress ? ` · ${Math.round(v.progress)} %` : ' …'}</span><small>Das dauert einige Minuten. Du kannst weiterarbeiten.</small></div>`;
+  }
+  return out;
+}
+
 export function renderMessageEl(message, h = {}) {
   const el = document.createElement('div');
   el.className = `message ${message.role}`;
@@ -41,7 +68,7 @@ export function renderMessageEl(message, h = {}) {
   body.className = 'message-body';
   const content = document.createElement('div');
   content.className = 'message-content';
-  content.innerHTML = filesRow(message.attachments) + (message.role === 'assistant'
+  content.innerHTML = filesRow(message.attachments) + mediaBlock(message, h) + (message.role === 'assistant'
     ? renderMarkdown(message.content || '')
     : escapeHtml(message.content || ''));
   body.appendChild(content);
@@ -60,7 +87,7 @@ export function renderMessageEl(message, h = {}) {
   }
 
   if (message.role === 'assistant') {
-    if (message.content) {
+    if (message.content && !message.media) {
       body.insertAdjacentHTML('beforeend', statsLine(message));
       const zipN = extractCodeBlocks(message.content).length;
       const speaking = h.speakingId === message.id;
@@ -70,6 +97,10 @@ export function renderMessageEl(message, h = {}) {
         btn('copy', I.copy, 'Kopieren', 'Antwort kopieren') +
         btn('speak', speaking ? I.stop : I.speak, speaking ? 'Stopp' : 'Vorlesen', 'Antwort vorlesen', speaking ? 'on' : '') +
         btn('regenerate', I.redo, 'Neu', 'Antwort neu generieren') +
+        btn('up', I.up, '', 'Hilfreiche Antwort', message.feedback === 'up' ? 'on' : '') +
+        btn('down', I.down, '', 'Nicht hilfreich', message.feedback === 'down' ? 'on' : '') +
+        btn('docx', I.doc, 'Word', 'Als Word-Datei speichern') +
+        versionSwitch(message) +
         (zipN >= 2 ? btn('zip', I.zip, `ZIP (${zipN})`, 'Alle Code-Dateien als ZIP laden') : '');
       actions.addEventListener('click', (e) => {
         const act = e.target.closest('[data-act]')?.dataset.act;
@@ -77,6 +108,10 @@ export function renderMessageEl(message, h = {}) {
         if (act === 'speak') h.onSpeak?.(message);
         if (act === 'regenerate') h.onRegenerate?.(message);
         if (act === 'zip') h.onZip?.(message);
+        if (act === 'docx') h.onDocx?.(message);
+        if (act === 'vprev') h.onVersion?.(message, -1);
+        if (act === 'vnext') h.onVersion?.(message, 1);
+        if (act === 'up' || act === 'down') h.onFeedback?.(message, act);
       });
       body.appendChild(actions);
     }

@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="de" data-theme="dark">
+<html lang="de" data-theme="light">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="theme-color" content="#060714">
+<meta name="theme-color" content="#faf9f5">
 <title>AI Core</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%237c7cff'/%3E%3Cstop offset='1' stop-color='%2338d0f5'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='9' fill='url(%23g)'/%3E%3Cpath d='M16 5l2.6 8.4L27 16l-8.4 2.6L16 27l-2.6-8.4L5 16l8.4-2.6z' fill='white'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="./src/css/app.css">
@@ -41,6 +41,10 @@
     </div>
 
     <nav class="sidebar-scroll" aria-label="Chats">
+      <div id="projects-section">
+        <div class="sidebar-section-title proj-title">Projekte <button id="new-project-btn" class="mini-btn" title="Neues Projekt" aria-label="Neues Projekt">+</button></div>
+        <div id="projects-list" class="chat-list"></div>
+      </div>
       <div id="favorites-section">
         <div class="sidebar-section-title">Angepinnt</div>
         <div id="favorites-list" class="chat-list"></div>
@@ -77,6 +81,7 @@
       <div class="topbar-actions">
         <span id="status-dot" class="status-dot idle" title="Status wird geladen …"></span>
         <label class="pick pick-role" title="Rolle dieses Chats"><span class="pick-label">Rolle</span><select id="role-select" aria-label="Rolle"></select></label>
+        <label class="pick pick-style" title="Antwortstil"><span class="pick-label">Stil</span><select id="style-select" aria-label="Antwortstil"></select></label>
         <label class="pick" title="Modell"><select id="model-select" aria-label="Modell"><option value="">Modelle werden geladen …</option></select></label>
         <button id="ctx-meter" class="ctx-meter" title="Kontext" aria-label="Kontext-Auslastung">
           <svg width="30" height="30" viewBox="0 0 30 30" fill="none" stroke-width="3"><circle class="ring-bg" cx="15" cy="15" r="12"/><circle class="ring" cx="15" cy="15" r="12" stroke-dasharray="75.4" stroke-dashoffset="75.4"/></svg>
@@ -87,6 +92,9 @@
         </button>
         <button id="export-btn" class="icon-btn" title="Chat als Markdown speichern" aria-label="Chat exportieren">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v3h16v-3"/></svg>
+        </button>
+        <button id="share-btn" class="icon-btn" title="Chat als Link teilen" aria-label="Chat teilen">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.800 4M15.400 6.500l-6.800 4"/></svg>
         </button>
         <button id="theme-toggle" class="icon-btn" title="Hell/Dunkel wechseln" aria-label="Design wechseln">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
@@ -120,6 +128,9 @@
           </button>
           <input type="file" id="file-input" multiple hidden accept=".pdf,.docx,.txt,.md,.csv,.tsv,.json,.xml,.yaml,.yml,.html,.css,.js,.ts,.py,.java,.c,.cpp,.go,.rs,.sh,.sql,.log,image/*">
           <textarea id="composer-input" class="composer-input" placeholder="Nachricht an AI Core …" rows="1" aria-label="Nachricht"></textarea>
+          <button type="button" id="mic-btn" class="icon-btn" title="Diktieren" aria-label="Diktieren" hidden>
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+          </button>
           <button type="submit" id="send-btn" class="send-btn" aria-label="Senden" disabled>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
           </button>

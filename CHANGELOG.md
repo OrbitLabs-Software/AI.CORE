@@ -5,6 +5,18 @@
 **GitHub-Pages-Betrieb:** Die Oberfläche kann auf GitHub liegen und den Server im Heimnetz ansprechen
 (Server-Adresse einstellbar, CORS mit `ALLOWED_ORIGINS`, Anmeldung per Token statt Cookie, Vorschau ohne Server, Workflow für Pages).
 
+**Claude-Look und neue Funktionen**
+- Warmes Papier-Design mit Terrakotta-Akzent, Serifenschrift für Antworten, flach statt Verlauf; hell ist jetzt Standard, dunkel bleibt möglich.
+- **Stile** (Normal, Prägnant, Erklärend, Formell, Locker) oben im Chat.
+- **Eigene Anweisungen** in den Einstellungen, gelten in jedem Chat.
+- **Diktieren** per Mikrofon-Knopf (Chrome, Edge, Safari).
+- **Daumen hoch/runter** unter jeder Antwort.
+- **Projekte** (Seitenleiste): eigene Anweisungen und Dateien, die in jedem Chat des Projekts gelten.
+- **Antwort-Versionen**: „Neu“ behält die alte Antwort, mit ‹ 1/2 › blätterst du zwischen den Versionen. Bricht das Neu-Generieren ab, bleibt die alte Antwort.
+- **Chats per Link teilen** (Teilen-Symbol oder `/teilen`): Nur-Lesen-Kopie auf dem Server; `/teilenaus` beendet das Teilen.
+- **Word-Export** unter jeder Antwort.
+- **`/bild`** und **`/video`**: über einen Anbieter (`IMAGE_API_KEY`, `VIDEO_API_KEY` in der .env), ohne Schlüssel erklärt die App, was fehlt.
+
 **Anmeldung neu gestaltet und repariert**
 - Die Knöpfe hatten keine Gestaltung (die Klasse fehlte im Stylesheet); jetzt einheitliches Design mit Google-/GitHub-Symbolen, Passwort-Anzeige, Ladeanzeige und Meldungen im Fenster.
 - Enter schickt jetzt auch bei Handynummer und SMS-Code ab; Felder bleiben beim Laden bedienbar.

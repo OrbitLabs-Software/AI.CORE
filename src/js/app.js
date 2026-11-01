@@ -16,6 +16,10 @@ import { initComposer } from '../components/composer.js';
 import { openSettingsModal } from './settings.js';
 import { mountLogin, mountConnect } from './login.js';
 import { isCrossOrigin } from './config.js';
+import { STYLES, buildSystem } from './styles.js';
+import { createProjectStore, openProjectDialog } from './projects.js';
+import { markdownToDocx, DOCX_MIME } from './docx.js';
+import { shareIdFromHash, showShared } from './sharedView.js';
 
 // ---------- DOM ----------
 const $ = (id) => document.getElementById(id);
@@ -101,7 +105,45 @@ function updateUserLabel() {
 }
 
 // ---------- Rendering ----------
+function renderProjects() {
+  const q = searchInput.value.trim();
+  $('projects-section').hidden = q !== '';
+  const list = $('projects-list');
+  list.innerHTML = '';
+  const all = projects.all();
+  if (!all.length) list.innerHTML = '<div class="chat-item-empty">Noch keine Projekte</div>';
+  for (const p of all) {
+    const item = document.createElement('div');
+    item.className = 'chat-item';
+    item.tabIndex = 0; item.setAttribute('role', 'button');
+    item.innerHTML = `<span class="chat-item-label" title="${p.name.replace(/"/g, '&quot;')}">📁 ${p.name.replace(/[<>&]/g, '')}</span>`;
+    const open = () => openProject(p.id);
+    item.addEventListener('click', open);
+    item.addEventListener('keydown', (e) => { if (e.key === 'Enter') open(); });
+    list.appendChild(item);
+  }
+}
+
+function openProject(id) {
+  const project = projects.get(id);
+  if (!project) return;
+  openProjectDialog({
+    project,
+    chats: store.all().filter(c => c.projectId === id),
+    onChange: (patch) => { projects.update(id, patch); renderProjects(); },
+    onNewChat: () => { newChat(); const c = store.getActive(); c.projectId = id; store.save(); renderSidebar(); renderMessages(); },
+    onOpenChat: selectChat,
+    onDelete: () => { projects.remove(id); renderProjects(); renderMessages(); },
+  });
+}
+
+$('new-project-btn').addEventListener('click', () => {
+  const name = prompt('Name des Projekts:');
+  if (name?.trim()) { const p = projects.create(name); renderProjects(); openProject(p.id); }
+});
+
 function renderSidebar() {
+  renderProjects();
   const handlers = { activeId: store.activeId, onSelect: selectChat, onDelete: onDeleteChat, onToggleFavorite: (id) => { store.toggleFavorite(id); renderSidebar(); } };
   const q = searchInput.value.trim();
   const favs = store.favorites();
@@ -131,6 +173,8 @@ function renderWelcome(roleId) {
   }
 }
 
+const projects = createProjectStore();
+
 function messageHandlers(chat) {
   return {
     speakingId,
@@ -138,7 +182,16 @@ function messageHandlers(chat) {
     onRegenerate: (m) => regenerate(chat.id, m),
     onEdit: (m) => editMessage(chat.id, m),
     onSpeak: speak,
+    onFeedback: (m, v) => { m.feedback = m.feedback === v ? null : v; store.save(); renderMessages({ keepScroll: true }); },
     onZip: downloadZip,
+    onDocx: (m) => downloadFile(`${(chat.title || 'antwort').replace(/[^\wäöüÄÖÜß -]+/g, '').trim().slice(0, 40) || 'antwort'}.docx`, markdownToDocx(m.content), DOCX_MIME),
+    onVersion: (m, d) => {
+      const i = (m.vIdx ?? m.versions.length - 1) + d, v = m.versions[i];
+      if (!v) return;
+      m.content = v.content; m.stats = v.stats; m.vIdx = i;
+      store.save(); renderMessages({ keepScroll: true });
+    },
+    videoUrl: (id) => { ensureVideoUrl(id); return videoUrls.get(id); },
     onCode: handleCodeAction,
     onSaveMemory: (m) => saveMemoryHint(m),
     onDismissMemory: (m) => { m.memoryHint = null; store.save(); renderMessages({ keepScroll: true }); },
@@ -155,13 +208,14 @@ function renderMessages({ keepScroll = false } = {}) {
     renderWelcome(roleId);
     welcomeScreen.hidden = false;
     messageList.hidden = true;
-    titleEl.textContent = chat?.title && chat.title !== 'Neuer Chat' ? chat.title : (roleId === 'coder' ? 'Coder' : 'Neuer Chat');
+    titleEl.textContent = (chat?.title && chat.title !== 'Neuer Chat' ? chat.title : (roleId === 'coder' ? 'Coder' : 'Neuer Chat'));
+    if (projects.get(chat?.projectId)) $('welcome-sub').textContent = `Projekt „${projects.get(chat.projectId).name}“ — Anweisungen und Dateien gelten in diesem Chat.`;
     updateContextMeter();
     return;
   }
   welcomeScreen.hidden = true;
   messageList.hidden = false;
-  titleEl.textContent = chat.title;
+  titleEl.textContent = (projects.get(chat.projectId) ? '📁 ' : '') + chat.title;
   const handlers = messageHandlers(chat);
   for (const message of chat.messages) messageList.appendChild(renderMessageEl(message, handlers));
   updateContextMeter();
@@ -300,8 +354,8 @@ async function sendMessage(text) {
 }
 
 function buildHistory(chat) {
-  const lastIdx = chat.messages.length - 1;
-  return chat.messages.map((m, i) => ({
+  const lastIdx = chat.messages.filter(m => !m.media).length - 1;
+  return chat.messages.filter(m => !m.media).map((m, i, arr) => ({
     role: m.role,
     content: m.content,
     ...(m.role === 'user' && m.attachments?.length ? {
@@ -314,7 +368,7 @@ function buildHistory(chat) {
   }));
 }
 
-async function runAssistantTurn(chatId) {
+async function runAssistantTurn(chatId, carry = null) {
   const chat = store.get(chatId);
   if (!chat) return;
 
@@ -334,7 +388,7 @@ async function runAssistantTurn(chatId) {
     const stream = api.streamChat({
       messages: buildHistory(chat),
       model: currentModel(),
-      system: role.prompt || undefined,
+      system: buildSystem(role.prompt, settings, projects.get(chat.projectId)),
       temperature: settings.temperature ?? undefined,
       memory: settings.useMemory,
       signal: abortController.signal,
@@ -367,14 +421,23 @@ async function runAssistantTurn(chatId) {
     typingIndicator.hidden = true;
     abortController = null;
 
+    const restoreVersions = () => {   // Abbruch oder Fehler beim Neu-Generieren: die alte Antwort bleibt erhalten
+      if (!carry) return;
+      const last = carry[carry.length - 1];
+      store.addMessage(chatId, { id: uid(), role: 'assistant', content: last.content, stats: last.stats, versions: carry, vIdx: carry.length - 1, createdAt: Date.now() });
+    };
     if (started) {
+      if (carry) { assistant.versions = [...carry, { content: assistant.content, stats: null }]; assistant.vIdx = assistant.versions.length - 1; }
       if (stats) assistant.stats = { ...stats, seconds: Math.round((Date.now() - startedAt) / 100) / 10 };
       if (notice) assistant.notice = notice;
       if (usedMemory) assistant.usedMemory = true;
+      if (assistant.versions) assistant.versions[assistant.vIdx].stats = assistant.stats || null;
       store.save();
     } else if (failure) {
-      showToast(failure);
-    } else if (!userAborted) {
+      showToast(failure); restoreVersions();
+    } else if (userAborted) {
+      restoreVersions();
+    } else {
       assistant.content = 'Es konnte keine Antwort erzeugt werden. Bitte versuche es erneut.';
       store.addMessage(chatId, assistant);
     }
@@ -394,9 +457,10 @@ function stopGeneration() {
 
 async function regenerate(chatId, message) {
   if (busy) return showToast('Bitte warten — oder mit Esc die Antwort stoppen');
+  const carry = message.versions?.length ? message.versions : [{ content: message.content, stats: message.stats }];
   store.truncateFrom(chatId, message.id);
   renderMessages();
-  await runAssistantTurn(chatId);
+  await runAssistantTurn(chatId, carry);
 }
 
 function editMessage(chatId, message) {
@@ -500,7 +564,125 @@ function exportCurrent() {
   exportChatMarkdown(chat);
 }
 
+// ---------- Bilder, Videos, Teilen ----------
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+const videoUrls = new Map(), videoLoading = new Set(), videoTracking = new Set();
+let mediaAck = false;
+
+function shrinkImage(src, max = 1024) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, max / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      resolve(c.toDataURL('image/jpeg', 0.85));
+    };
+    img.onerror = () => resolve(src.length < 1_500_000 ? src : null);
+    img.src = src;
+  });
+}
+
+async function ensureVideoUrl(id) {
+  if (videoUrls.has(id) || videoLoading.has(id)) return;
+  videoLoading.add(id);
+  try { videoUrls.set(id, await api.videoBlobUrl(id)); renderMessages({ keepScroll: true }); }
+  catch { /* Datei fehlt: bleibt beim Wartezustand */ }
+  finally { videoLoading.delete(id); }
+}
+
+async function trackVideo(chatId, msg) {
+  const v = msg.video;
+  if (!v || v.state !== 'working' || videoTracking.has(v.id)) return;
+  videoTracking.add(v.id);
+  let errors = 0;
+  try {
+    while (v.state === 'working') {
+      await sleep(5000);
+      try {
+        const s = await api.videoStatus(v.id);
+        errors = 0;
+        v.progress = s.progress || v.progress;
+        if (s.status === 'failed') { v.state = 'failed'; v.error = s.error; }
+        if (s.status === 'done') v.state = 'done';
+      } catch (e) { if (e.status === 401 || ++errors >= 6) { if (e.status !== 401) { v.state = 'failed'; v.error = e.message; } break; } }
+      store.save();
+      if (store.activeId === chatId) renderMessages({ keepScroll: true });
+    }
+  } finally { videoTracking.delete(v.id); store.save(); if (store.activeId === chatId) renderMessages({ keepScroll: true }); }
+}
+
+function resumeVideos() {
+  for (const c of store.raw()) for (const m of c.messages) if (m.video?.state === 'working') trackVideo(c.id, m);
+}
+
+async function makeMedia(kind, prompt) {
+  const word = kind === 'image' ? 'Bild' : 'Video';
+  if (!prompt) return showToast(`Beschreibe das ${word}, z. B. /${word.toLowerCase()} ein Fuchs im Schnee`);
+  if (busy) return showToast('Bitte warten — oder mit Esc stoppen');
+  const chat = store.getActive() || store.createChat(settings.roleId !== 'default' ? settings.roleId : null);
+  const say = (content, extra = {}) => { store.addMessage(chat.id, { id: uid(), role: 'assistant', media: true, content, createdAt: Date.now(), ...extra }); };
+  store.addMessage(chat.id, { id: uid(), role: 'user', media: true, content: `/${word.toLowerCase()} ${prompt}`, createdAt: Date.now() });
+  const finish = () => { busy = false; composer.setBusy(false); typingIndicator.hidden = true; renderSidebar(); renderMessages(); };
+  if (!appConfig.features?.[kind]) {
+    say(`${kind === 'image' ? 'Die Bilderzeugung' : 'Die Videoerstellung'} ist noch nicht eingerichtet. Der Tiny hat keine Grafikkarte, deshalb läuft das über einen Anbieter: Trage in der .env auf dem Server ${kind === 'image' ? 'IMAGE_API_KEY' : 'VIDEO_API_KEY'} ein (siehe README) und starte den Dienst neu.`);
+    return finish();
+  }
+  if (!mediaAck && !confirm(`Deine Beschreibung wird an den ${word}-Anbieter geschickt (Internet). Fortfahren?`)) { store.removeMessage(chat.id, chat.messages.at(-1).id); return finish(); }
+  mediaAck = true;
+  busy = true; composer.setBusy(true); typingIndicator.hidden = false; renderMessages();
+  try {
+    if (kind === 'image') {
+      const img = await shrinkImage(await api.image(prompt));
+      if (!img) throw new Error('Das Bild konnte nicht verarbeitet werden');
+      say('Hier ist dein Bild.', { images: [img] });
+    } else {
+      const id = await api.videoStart(prompt);
+      const msg = { id: uid(), role: 'assistant', media: true, content: 'Ich erzeuge dein Video …', video: { id, state: 'working', progress: 0 }, createdAt: Date.now() };
+      store.addMessage(chat.id, msg);
+      trackVideo(chat.id, msg);
+    }
+  } catch (e) { if (!(e instanceof ApiError && e.status === 401)) say(`Das hat nicht geklappt: ${e.message}`); }
+  finish();
+}
+
+async function shareCurrent() {
+  const chat = store.getActive();
+  if (!chat?.messages.some(m => !m.media)) return showToast('Nichts zu teilen — der Chat ist leer');
+  if (appConfig.features && !appConfig.features.share) return showToast('Teilen ist auf dem Server abgeschaltet');
+  if (!confirm('Eine Nur-Lesen-Kopie dieses Chats auf deinem Server ablegen und einen Link erzeugen? Wer den Link hat, kann sie lesen (Dateiinhalte und Bilder werden nicht geteilt).')) return;
+  try {
+    const id = await api.share(chat);
+    chat.shared = id; store.save();
+    const link = `${location.origin}${location.pathname}#share=${id}`;
+    try { await navigator.clipboard.writeText(link); showToast('Link kopiert — er funktioniert für alle, die deinen Server erreichen'); }
+    catch { prompt('Link zum Teilen (nur für Geräte, die deinen Server erreichen):', link); }
+  } catch (e) { showToast(e.message || 'Teilen fehlgeschlagen'); }
+}
+
+async function unshareCurrent() {
+  const chat = store.getActive();
+  if (!chat?.shared) return showToast('Dieser Chat ist nicht geteilt');
+  await api.unshare(chat.shared).catch(() => {});
+  chat.shared = null; store.save();
+  showToast('Teilen beendet — der Link funktioniert nicht mehr');
+}
+
+function importShared(data) {
+  const id = uid(), now = Date.now();
+  store.importChats([{ id, title: data.title, favorite: false, roleId: null, createdAt: now, updatedAt: now, messages: data.messages.map(m => ({ id: uid(), role: m.role, content: m.content, createdAt: now })) }]);
+  store.setActive(id);
+  renderSidebar(); renderMessages();
+}
+
+$('share-btn').addEventListener('click', shareCurrent);
+
 const COMMANDS = [
+  { name: 'bild', args: true, hint: 'Bild erzeugen, z. B. /bild ein Fuchs im Schnee', run: (a) => makeMedia('image', a) },
+  { name: 'video', args: true, hint: 'Video erzeugen, z. B. /video Wellen am Strand', run: (a) => makeMedia('video', a) },
+  { name: 'teilen', hint: 'Chat als Nur-Lesen-Link teilen', run: shareCurrent },
+  { name: 'teilenaus', hint: 'Teilen dieses Chats beenden', run: unshareCurrent },
   { name: 'neu', hint: 'Neuer Chat', run: () => newChat() },
   { name: 'coder', hint: 'Coder-Modus mit Vorschau starten', run: startCoder },
   { name: 'rolle', args: true, hint: 'Rolle wählen, z. B. /rolle coder', run: setRoleByName },
@@ -589,6 +771,7 @@ function showLogin() {
 }
 
 function afterLogin() {
+  resumeVideos();
   refreshHealth();
   refreshMemoryCount();
 }
@@ -712,6 +895,30 @@ createSlashMenu({
   onPick: (c) => { if (c.args) composer.setValue(`/${c.name} `); else { composer.setValue(''); c.run(''); } },
 });
 
+// ---------- Stil und Diktieren ----------
+const styleSelect = $('style-select');
+for (const s of STYLES) styleSelect.appendChild(Object.assign(document.createElement('option'), { value: s.id, textContent: s.name }));
+styleSelect.value = settings.style || 'normal';
+styleSelect.addEventListener('change', () => { settings.style = styleSelect.value; storage.saveSettings(settings); });
+
+const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
+const micBtn = $('mic-btn');
+if (Speech) {
+  micBtn.hidden = false;
+  let rec = null, base = '';
+  micBtn.addEventListener('click', () => {
+    if (rec) return rec.stop();
+    rec = new Speech();
+    rec.lang = 'de-AT'; rec.interimResults = true; rec.continuous = true;
+    base = composerInput.value ? composerInput.value.replace(/\s*$/, ' ') : '';
+    rec.onresult = (e) => { composer.setValue(base + [...e.results].map(r => r[0].transcript).join('')); };
+    rec.onerror = (e) => { if (e.error === 'not-allowed') showToast('Mikrofon nicht erlaubt'); };
+    rec.onend = () => { rec = null; micBtn.classList.remove('on'); composerInput.focus(); };
+    micBtn.classList.add('on');
+    rec.start();
+  });
+}
+
 // ---------- Start ----------
 updateUserLabel();
 renderSidebar();
@@ -728,6 +935,11 @@ function applyConfig(cfg) {
 window.addEventListener('aicore:reconnected', (e) => applyConfig(e.detail));
 
 (async function boot() {
+  const sid = shareIdFromHash();
+  if (sid) {
+    await showShared(sid, { onImport: importShared });
+    history.replaceState(null, '', location.pathname + location.search);
+  }
   try {
     applyConfig(await api.config());
   } catch (e) {

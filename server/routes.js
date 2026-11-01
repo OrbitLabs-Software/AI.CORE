@@ -1,3 +1,4 @@
+import fs from 'fs';
 import { Router } from 'express';
 import multer from 'multer';
 import {
@@ -11,6 +12,9 @@ import {
 } from './security.js';
 import { keyFor, listMemories, addMemory, deleteMemory, clearMemories, memoryPrompt, memoryEnabled, MAX_ITEMS } from './memory.js';
 import { createPreview } from './preview.js';
+import { createShare, readShare, deleteShare, shareEnabled } from './share.js';
+import { generateImage, imageEnabled } from './image.js';
+import { startVideo, videoStatus, videoFile, videoEnabled } from './video.js';
 
 export const VERSION = '3.1.0';
 
@@ -36,7 +40,13 @@ export const router = Router();
 // ---------- Öffentlich ----------
 router.get('/config', (req, res) => {
   const cfg = getConfig();
-  res.json({ version: VERSION, provider: cfg.provider, ...authInfo(req) });
+  res.json({ version: VERSION, provider: cfg.provider, features: { image: imageEnabled(), video: videoEnabled(), share: shareEnabled() }, ...authInfo(req) });
+});
+// Geteilte Chats lesen: ohne Anmeldung (der Link ist das Geheimnis).
+router.get('/share/:id', lightLimiter, (req, res) => {
+  const data = shareEnabled() ? readShare(req.params.id) : null;
+  if (!data) return res.status(404).json({ error: 'Dieser Link gibt es nicht (mehr).' });
+  res.json(data);
 });
 router.post('/login', loginLimiter, loginHandler);
 router.post('/auth/firebase', loginLimiter, firebaseLoginHandler);
@@ -138,6 +148,56 @@ router.delete('/memories', lightLimiter, (req, res) => {
   res.json({ ok: true, removed: clearMemories(memKey(req)) });
 });
 
+// ---------- Teilen ----------
+router.post('/share', lightLimiter, (req, res) => {
+  if (!shareEnabled()) return res.status(403).json({ error: 'Teilen ist deaktiviert' });
+  const r = createShare(req.body?.chat, sessionFromRequest(req)?.sub || '');
+  if (r.error) return res.status(r.status).json({ error: r.error });
+  res.status(201).json({ id: r.id });
+});
+router.delete('/share/:id', lightLimiter, (req, res) => {
+  res.status(deleteShare(req.params.id, sessionFromRequest(req)?.sub || '') ? 200 : 404).json({ ok: true });
+});
+
+// ---------- Bilder ----------
+const imageLimiter = rateLimit({ windowMs: 60 * 1000, max: 6, message: 'Zu viele Bilder in kurzer Zeit. Bitte kurz warten.' });
+let imageBusy = false;
+router.post('/image', imageLimiter, async (req, res) => {
+  if (!imageEnabled()) return res.status(501).json({ error: 'Bilderzeugung ist nicht eingerichtet (IMAGE_API_KEY in der .env).' });
+  const prompt = String(req.body?.prompt || '').trim().slice(0, 1500);
+  if (!prompt) return res.status(400).json({ error: 'Bitte beschreibe das Bild.' });
+  if (imageBusy) return res.status(429).json({ error: 'Es wird gerade ein Bild erzeugt. Bitte gleich erneut.' });
+  imageBusy = true;
+  const ac = new AbortController();
+  res.on('close', () => ac.abort());
+  try {
+    const { b64, mime } = await generateImage(prompt, ac.signal);
+    res.json({ image: `data:${mime};base64,${b64}` });
+  } catch (e) {
+    if (!ac.signal.aborted) { console.warn('[image]', e.message); res.status(502).json({ error: e.message || 'Bild fehlgeschlagen' }); }
+  } finally { imageBusy = false; }
+});
+
+// ---------- Videos ----------
+const videoLimiter = rateLimit({ windowMs: 10 * 60 * 1000, max: 4, message: 'Zu viele Videos in kurzer Zeit. Bitte später erneut.' });
+router.post('/video', videoLimiter, async (req, res) => {
+  if (!videoEnabled()) return res.status(501).json({ error: 'Videoerstellung ist nicht eingerichtet (VIDEO_API_KEY in der .env).' });
+  const prompt = String(req.body?.prompt || '').trim().slice(0, 1500);
+  if (!prompt) return res.status(400).json({ error: 'Bitte beschreibe das Video.' });
+  try { res.status(202).json({ id: await startVideo(prompt) }); }
+  catch (e) { console.warn('[video]', e.message); res.status(502).json({ error: e.message }); }
+});
+router.get('/video/:id', lightLimiter, async (req, res) => {
+  try { res.json(await videoStatus(req.params.id)); }
+  catch (e) { res.status(502).json({ status: 'failed', error: e.message }); }
+});
+router.get('/video/:id/file', lightLimiter, (req, res) => {
+  const file = videoFile(req.params.id);
+  if (!file || !fs.existsSync(file)) return res.status(404).json({ error: 'Video nicht gefunden' });
+  res.setHeader('Content-Type', 'video/mp4');
+  fs.createReadStream(file).pipe(res);
+});
+
 // ---------- Code-Vorschau (HTML/SVG im Sandbox-iframe) ----------
 router.post('/preview', lightLimiter, (req, res) => {
   const r = createPreview(req.body?.kind, req.body?.code);
@@ -157,7 +217,7 @@ router.post('/chat/stream', chatLimiter, async (req, res) => {
   }
 
   const cfg = getConfig();
-  let system = typeof body.system === 'string' && body.system.trim() ? body.system.trim().slice(0, 4000) : cfg.systemPrompt;
+  let system = typeof body.system === 'string' && body.system.trim() ? body.system.trim().slice(0, Number(process.env.MAX_SYSTEM_CHARS) || 30000) : cfg.systemPrompt;
   let usedMemory = false;
   if (memoryEnabled() && body.memory !== false) {
     const mem = memoryPrompt(memKey(req));

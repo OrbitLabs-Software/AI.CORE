@@ -4,10 +4,13 @@
 const KEYS = {
   chats: 'aicore.chats.v1',
   settings: 'aicore.settings.v1',
+  projects: 'aicore.projects.v1',
 };
 
 const DEFAULT_SETTINGS = {
-  theme: 'dark',
+  theme: 'light',
+  style: 'normal',    // Antwortstil
+  instructions: '',  // eigene Anweisungen für alle Chats
   sidebarCollapsed: false,
   model: '',
   username: 'Brett',
@@ -48,6 +51,13 @@ export const storage = {
   },
   saveChats(chats) {
     return writeJSON(KEYS.chats, chats);
+  },
+  getProjects() {
+    const p = readJSON(KEYS.projects, []);
+    return Array.isArray(p) ? p : [];
+  },
+  saveProjects(list) {
+    return writeJSON(KEYS.projects, list);
   },
   getSettings() {
     return { ...DEFAULT_SETTINGS, ...readJSON(KEYS.settings, {}) };
