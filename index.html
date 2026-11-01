@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="de" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#060714">
+<title>AI Core</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%237c7cff'/%3E%3Cstop offset='1' stop-color='%2338d0f5'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='9' fill='url(%23g)'/%3E%3Cpath d='M16 5l2.6 8.4L27 16l-8.4 2.6L16 27l-2.6-8.4L5 16l8.4-2.6z' fill='white'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="./src/css/app.css">
+</head>
+<body>
+<div id="app" class="app">
+
+  <div id="drawer-overlay" class="scrim"></div>
+
+  <!-- SEITENLEISTE -->
+  <aside id="sidebar" class="sidebar">
+    <div class="sidebar-header">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 2 L14.5 9.5 L22 12 L14.5 14.5 L12 22 L9.5 14.5 L2 12 L9.5 9.5 Z" fill="currentColor"/></svg>
+        </span>
+        <span>AI Core<small>OrbitLabs</small></span>
+      </div>
+      <button id="sidebar-collapse" class="icon-btn" title="Seitenleiste einklappen" aria-label="Seitenleiste einklappen">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/></svg>
+      </button>
+    </div>
+
+    <div class="side-actions">
+      <button id="new-chat-btn" class="btn primary">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>
+        Neuer Chat
+      </button>
+      <button id="coder-btn" class="btn coder-btn" title="Neuer Chat im Coder-Modus mit Vorschau">&lt;/&gt; Coder</button>
+    </div>
+
+    <div class="sidebar-search">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+      <input id="chat-search" class="text-input" type="text" placeholder="Chats durchsuchen (Strg+K)" autocomplete="off">
+    </div>
+
+    <nav class="sidebar-scroll" aria-label="Chats">
+      <div id="favorites-section">
+        <div class="sidebar-section-title">Angepinnt</div>
+        <div id="favorites-list" class="chat-list"></div>
+      </div>
+      <div id="history-list"></div>
+    </nav>
+
+    <div class="sidebar-footer">
+      <button id="memory-btn" class="side-link">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/></svg>
+        Erinnerungen <span id="memory-count" class="count"></span>
+      </button>
+      <button id="settings-btn" class="sidebar-user" aria-label="Einstellungen öffnen">
+        <span class="avatar">B</span>
+        <span class="user-meta">
+          <span class="user-name">Brett</span>
+          <span class="user-plan">Einstellungen</span>
+        </span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9c.2.7.7 1.2 1.5 1.4h.1a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.4 1.6z"/></svg>
+      </button>
+    </div>
+  </aside>
+
+  <!-- CHAT -->
+  <main class="main">
+    <header class="topbar">
+      <button id="drawer-toggle" class="icon-btn drawer-toggle" aria-label="Menü öffnen">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+      <button id="sidebar-expand" class="icon-btn sidebar-expand-btn" aria-label="Seitenleiste einblenden">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/></svg>
+      </button>
+      <div class="topbar-title"><span id="current-chat-title" title="Doppelklick zum Umbenennen">Neuer Chat</span></div>
+      <div class="topbar-actions">
+        <span id="status-dot" class="status-dot idle" title="Status wird geladen …"></span>
+        <label class="pick pick-role" title="Rolle dieses Chats"><span class="pick-label">Rolle</span><select id="role-select" aria-label="Rolle"></select></label>
+        <label class="pick" title="Modell"><select id="model-select" aria-label="Modell"><option value="">Modelle werden geladen …</option></select></label>
+        <button id="ctx-meter" class="ctx-meter" title="Kontext" aria-label="Kontext-Auslastung">
+          <svg width="30" height="30" viewBox="0 0 30 30" fill="none" stroke-width="3"><circle class="ring-bg" cx="15" cy="15" r="12"/><circle class="ring" cx="15" cy="15" r="12" stroke-dasharray="75.4" stroke-dashoffset="75.4"/></svg>
+          <span id="ctx-pct">0</span>
+        </button>
+        <button id="panel-toggle" class="icon-btn" title="Vorschau und Code" aria-label="Vorschau und Code umschalten">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M14 4v16"/></svg>
+        </button>
+        <button id="export-btn" class="icon-btn" title="Chat als Markdown speichern" aria-label="Chat exportieren">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v3h16v-3"/></svg>
+        </button>
+        <button id="theme-toggle" class="icon-btn" title="Hell/Dunkel wechseln" aria-label="Design wechseln">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <div id="chat-scroll" class="chat-scroll">
+      <div id="welcome-screen" class="welcome-screen">
+        <div class="welcome-mark" aria-hidden="true">
+          <svg width="34" height="34" viewBox="0 0 24 24" fill="none"><path d="M12 2 L14.5 9.5 L22 12 L14.5 14.5 L12 22 L9.5 14.5 L2 12 L9.5 9.5 Z" fill="currentColor"/></svg>
+        </div>
+        <h1 id="welcome-title">Woran arbeiten wir <span class="grad">heute</span>?</h1>
+        <p class="welcome-sub" id="welcome-sub">Stelle eine Frage, hänge eine Datei an oder wähle einen Vorschlag.</p>
+        <div id="suggestion-cards" class="suggestion-cards"></div>
+        <p class="welcome-hint">Tipp: Mit <kbd>/</kbd> öffnest du Befehle, zum Beispiel <kbd>/merken</kbd> oder <kbd>/coder</kbd>.</p>
+      </div>
+      <div id="message-list" class="message-list" hidden></div>
+      <div id="typing-indicator" class="typing-indicator" hidden>
+        <span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>
+      </div>
+    </div>
+
+    <div class="composer-wrap">
+      <div class="composer-inner">
+        <div id="file-preview-row" class="file-preview-row" hidden></div>
+        <div id="slash-menu" class="slash-menu" role="listbox" hidden></div>
+        <form id="composer-form" class="composer">
+          <button type="button" id="attach-btn" class="icon-btn" title="Datei anhängen" aria-label="Datei anhängen">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21.4 11.1 12.7 19.8a5 5 0 0 1-7.1-7.1l8.5-8.5a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-2.8-2.8l7.8-7.8"/></svg>
+          </button>
+          <input type="file" id="file-input" multiple hidden accept=".pdf,.docx,.txt,.md,.csv,.tsv,.json,.xml,.yaml,.yml,.html,.css,.js,.ts,.py,.java,.c,.cpp,.go,.rs,.sh,.sql,.log,image/*">
+          <textarea id="composer-input" class="composer-input" placeholder="Nachricht an AI Core …" rows="1" aria-label="Nachricht"></textarea>
+          <button type="submit" id="send-btn" class="send-btn" aria-label="Senden" disabled>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+          </button>
+        </form>
+        <div class="composer-hint">AI Core kann Fehler machen. Wichtige Angaben bitte prüfen. · <kbd>Enter</kbd> senden · <kbd>Shift</kbd>+<kbd>Enter</kbd> neue Zeile</div>
+      </div>
+    </div>
+  </main>
+
+  <!-- VORSCHAU / CODE -->
+  <aside id="artifact-panel" class="artifact-panel" hidden aria-label="Vorschau und Code">
+    <div class="artifact-head">
+      <div class="artifact-title"><span id="artifact-name">Vorschau</span><small id="artifact-meta"></small></div>
+      <div class="seg" id="artifact-tabs"><button type="button" data-tab="preview" class="on">Vorschau</button><button type="button" data-tab="code">Code</button></div>
+      <button id="artifact-copy" class="icon-btn" title="Code kopieren" aria-label="Code kopieren"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+      <button id="artifact-download" class="icon-btn" title="Datei herunterladen" aria-label="Datei herunterladen"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v3h16v-3"/></svg></button>
+      <button id="artifact-open" class="icon-btn" title="In neuem Tab öffnen" aria-label="In neuem Tab öffnen"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></button>
+      <button id="artifact-close" class="icon-btn" title="Schließen" aria-label="Schließen"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    </div>
+    <div class="artifact-body">
+      <iframe id="artifact-frame" title="Vorschau" sandbox="allow-scripts allow-forms allow-modals allow-popups" referrerpolicy="no-referrer"></iframe>
+      <pre id="artifact-code" hidden><code></code></pre>
+      <div id="artifact-empty" class="artifact-empty">Klicke bei einem Code-Block auf „Vorschau“ oder „Öffnen“. Dann erscheint er hier.</div>
+    </div>
+    <div class="artifact-foot">Die Vorschau läuft isoliert in einer Sandbox: ohne Zugriff auf AI Core und ohne Netzwerk.</div>
+  </aside>
+</div>
+
+<div id="modal-root"></div>
+<script type="module" src="./src/js/app.js"></script>
+</body>
+</html>

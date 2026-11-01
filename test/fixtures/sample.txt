@@ -1,0 +1,1 @@
+Notiz: Das Passwort-Rotation-Intervall betraegt 90 Tage.

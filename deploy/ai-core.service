@@ -1,0 +1,24 @@
+# Autostart für AI Core (Ubuntu/Xubuntu)
+# Installation:
+#   sudo cp deploy/ai-core.service /etc/systemd/system/ai-core.service
+#   sudo nano /etc/systemd/system/ai-core.service     (User und Pfad anpassen)
+#   sudo systemctl daemon-reload && sudo systemctl enable --now ai-core
+# Log ansehen:  journalctl -u ai-core -n 30 --no-pager
+[Unit]
+Description=AI Core Chat
+After=network-online.target ollama.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=DEIN_BENUTZERNAME
+WorkingDirectory=/home/DEIN_BENUTZERNAME/ai-core
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node server/server.js
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
