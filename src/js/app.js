@@ -686,7 +686,7 @@ async function makeMedia(kind, prompt) {
       store.addMessage(chat.id, msg);
       trackVideo(chat.id, msg);
     }
-  } catch (e) { if (!(e instanceof ApiError && e.status === 401)) say(`Das hat nicht geklappt: ${e.message}`); }
+  } catch (e) { if (!(e instanceof ApiError && e.status === 401)) say(e.status === 402 || e.status === 503 ? e.message : `Das hat nicht geklappt: ${e.message}`); }
   finish();
 }
 
@@ -734,6 +734,7 @@ const COMMANDS = [
   { name: 'vergessen', hint: 'Erinnerungen ansehen und löschen', run: () => openSettings('memory') },
   { name: 'export', hint: 'Chat als Markdown speichern', run: exportCurrent },
   { name: 'modell', hint: 'Modell auswählen', run: () => modelSelect.focus() },
+  { name: 'pro', hint: 'AI Core Pro: Kontingent und Kauf', run: () => openSettings('pro') },
   { name: 'hilfe', hint: 'Tastenkürzel und Befehle', run: () => openSettings('about') },
 ];
 
@@ -815,6 +816,7 @@ function showLogin() {
 }
 
 function afterLogin() {
+  confirmProReturn();
   resumeVideos();
   refreshHealth();
   refreshMemoryCount();
@@ -977,6 +979,17 @@ function applyConfig(cfg) {
   else afterLogin();
 }
 window.addEventListener('aicore:reconnected', (e) => applyConfig(e.detail));
+
+// Rückkehr vom Bezahlen (Stripe): #pro=success&session_id=… wird nach der Anmeldung bestätigt
+const proReturn = /^#pro=success&session_id=(cs_[A-Za-z0-9_]+)$/.exec(location.hash)?.[1] || null;
+if (proReturn || location.hash === '#pro=cancel') {
+  if (!proReturn) showToast('Kauf abgebrochen — es wurde nichts berechnet.');
+  history.replaceState(null, '', location.pathname + location.search);
+}
+function confirmProReturn() {
+  if (!proReturn) return;
+  api.proConfirm(proReturn).then(() => { showToast('AI Core Pro ist aktiv. Danke!'); openSettings('pro'); }).catch(e => showToast(e.message || 'Zahlung konnte nicht bestätigt werden'));
+}
 
 (async function boot() {
   const sid = shareIdFromHash();

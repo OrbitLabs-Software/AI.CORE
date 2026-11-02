@@ -141,6 +141,29 @@ export const api = {
     return res.ok;
   },
 
+  // ---------- Tarif ----------
+  async plan() { const res = await request('/api/plan'); if (!res.ok) throw new ApiError(await errorMessage(res), res.status); return res.json(); },
+  async proCheckout(returnUrl) {
+    const res = await jsonPost('/api/pro/checkout', { returnUrl });
+    if (!res.ok) throw new ApiError(await errorMessage(res), res.status);
+    return (await res.json()).url;
+  },
+  async proConfirm(sessionId) {
+    const res = await jsonPost('/api/pro/confirm', { sessionId });
+    if (!res.ok) throw new ApiError(await errorMessage(res), res.status);
+    return res.json();
+  },
+  async proPortal(returnUrl) {
+    const res = await jsonPost('/api/pro/portal', { returnUrl });
+    if (!res.ok) throw new ApiError(await errorMessage(res), res.status);
+    return (await res.json()).url;
+  },
+  async proRedeem(code) {
+    const res = await jsonPost('/api/pro/redeem', { code });
+    if (!res.ok) throw new ApiError(await errorMessage(res), res.status);
+    return res.json();
+  },
+
   /** Chat als Nur-Lesen-Link teilen; gibt die ID zurück. */
   async share(chat) {
     const res = await jsonPost('/api/share', { chat: { title: chat.title, messages: chat.messages.filter(m => !m.media).map(m => ({ role: m.role, content: m.content, attachments: (m.attachments || []).map(a => ({ name: a.name })) })) } });

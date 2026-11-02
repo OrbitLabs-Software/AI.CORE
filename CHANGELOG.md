@@ -1,5 +1,14 @@
 # Änderungen
 
+## 3.3.0
+
+**Videos über Hugging Face, Monats-Kontingente und AI Core Pro**
+- `/video` läuft jetzt auch über Hugging Face (`HF_TOKEN`, Modell und Anbieter in der `.env` einstellbar). Das Video entsteht im Hintergrund und liegt danach auf dem Server.
+- **Kontingente pro Konto und Monat:** gratis 1 Video und 10 Bilder, Pro 20 Videos und 200 Bilder (alles in der `.env` änderbar). Scheitert ein Auftrag, wird das Kontingent zurückgegeben. Eine Gesamt-Notbremse (`VIDEO_MAX_PER_MONTH_TOTAL`) schützt vor Überraschungen bei den Kosten.
+- **AI Core Pro kaufen** (Einstellungen → Pro oder `/pro`): Stripe-Abo mit Rückkehr auf die Seite. Kein Webhook nötig, der Server fragt Stripe selbst; der Tiny muss nicht aus dem Internet erreichbar sein. Abo verwalten und kündigen über das Stripe-Portal.
+- **Einlösecodes** (`PRO_CODES`) für Geschenke und Tests, jeder Code nur einmal.
+- **Besitzer** (`OWNER_UIDS`) und Server ohne Anmeldung haben keine Grenzen.
+
 ## 3.2.0
 
 **Dateien erstellen:** Die KI schreibt den Inhalt, ein Knopf macht daraus die fertige Datei. Alles läuft im Browser,

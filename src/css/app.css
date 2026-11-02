@@ -479,3 +479,13 @@ body::before, :root[data-theme="light"] body::before, .lg-overlay::before { back
 .export-menu[hidden] { display: none; }
 .export-menu button { justify-content: flex-start; width: 100%; padding: 7px 10px; font-size: 13px; color: var(--text); border-radius: 8px; }
 .export-menu button:hover { background: var(--accent-soft); color: var(--accent); }
+
+/* ---------- Pro ---------- */
+.pro-use { margin: 8px 0; }
+.pro-use-head { display: flex; justify-content: space-between; font-size: 13px; color: var(--text-2); margin-bottom: 4px; }
+.pro-use-head b { color: var(--text); font-weight: 600; }
+.pro-bar { height: 8px; border-radius: 99px; background: var(--bg-3); overflow: hidden; }
+.pro-bar i { display: block; height: 100%; border-radius: 99px; background: var(--accent); }
+.pro-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 4px; }
+.pro-code { display: flex; gap: 8px; }
+.pro-code .text-input { flex: 1; }

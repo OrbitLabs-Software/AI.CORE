@@ -9,14 +9,17 @@ import { buildContext } from './context.js';
 import { processUploadedFile } from './fileProcessor.js';
 import {
   requireAuth, rateLimit, loginLimiter, loginHandler, firebaseLoginHandler, logoutHandler, authInfo, sessionFromRequest,
+  authEnabled, originAllowed,
 } from './security.js';
 import { keyFor, listMemories, addMemory, deleteMemory, clearMemories, memoryPrompt, memoryEnabled, MAX_ITEMS } from './memory.js';
 import { createPreview } from './preview.js';
 import { createShare, readShare, deleteShare, shareEnabled } from './share.js';
 import { generateImage, imageEnabled } from './image.js';
 import { startVideo, videoStatus, videoFile, videoEnabled } from './video.js';
+import { planStatus, reserve, refund, grantPro, revokePro, proInfo, redeemCode, codesEnabled } from './plan.js';
+import { stripeEnabled, createCheckout, confirmCheckout, subscriptionState, createPortal } from './stripe.js';
 
-export const VERSION = '3.2.0';
+export const VERSION = '3.3.0';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024, files: 1 } });
 
@@ -40,7 +43,7 @@ export const router = Router();
 // ---------- Öffentlich ----------
 router.get('/config', (req, res) => {
   const cfg = getConfig();
-  res.json({ version: VERSION, provider: cfg.provider, features: { image: imageEnabled(), video: videoEnabled(), share: shareEnabled() }, ...authInfo(req) });
+  res.json({ version: VERSION, provider: cfg.provider, features: { image: imageEnabled(), video: videoEnabled(), share: shareEnabled(), pro: stripeEnabled() || codesEnabled() }, ...authInfo(req) });
 });
 // Geteilte Chats lesen: ohne Anmeldung (der Link ist das Geheimnis).
 router.get('/share/:id', lightLimiter, (req, res) => {
@@ -159,6 +162,24 @@ router.delete('/share/:id', lightLimiter, (req, res) => {
   res.status(deleteShare(req.params.id, sessionFromRequest(req)?.sub || '') ? 200 : 404).json({ ok: true });
 });
 
+// ---------- Konto, Tarif, Kontingent ----------
+const accountOf = (req) => {
+  const s = sessionFromRequest(req);
+  const owners = String(process.env.OWNER_UIDS || '').split(',').map(v => v.trim().toLowerCase()).filter(Boolean);
+  return { key: keyFor(s), session: s, unlimited: !authEnabled() || (s?.sub && owners.includes(String(s.sub).toLowerCase())) };
+};
+
+/** Stripe-Abo bei Ablauf der Periode erneut prüfen (kein Webhook nötig); höchstens alle 10 Minuten. */
+async function syncStripe(key) {
+  const info = proInfo(key);
+  if (!stripeEnabled() || info?.source !== 'stripe' || !info.subscription) return;
+  if (info.until > Date.now() + 86400000 || Date.now() - (info.checkedAt || 0) < 600000) return;
+  try {
+    const s = await subscriptionState(info.subscription);
+    if (s.active) grantPro(key, { ...info, until: s.until }); else revokePro(key);
+  } catch (e) { console.warn('[pro]', e.message); }
+}
+
 // ---------- Bilder ----------
 const imageLimiter = rateLimit({ windowMs: 60 * 1000, max: 6, message: 'Zu viele Bilder in kurzer Zeit. Bitte kurz warten.' });
 let imageBusy = false;
@@ -167,6 +188,9 @@ router.post('/image', imageLimiter, async (req, res) => {
   const prompt = String(req.body?.prompt || '').trim().slice(0, 1500);
   if (!prompt) return res.status(400).json({ error: 'Bitte beschreibe das Bild.' });
   if (imageBusy) return res.status(429).json({ error: 'Es wird gerade ein Bild erzeugt. Bitte gleich erneut.' });
+  const acct = accountOf(req);
+  const q = reserve(acct.key, 'image', acct);
+  if (!q.ok) return res.status(q.status).json({ error: q.error });
   imageBusy = true;
   const ac = new AbortController();
   res.on('close', () => ac.abort());
@@ -174,18 +198,22 @@ router.post('/image', imageLimiter, async (req, res) => {
     const { b64, mime } = await generateImage(prompt, ac.signal);
     res.json({ image: `data:${mime};base64,${b64}` });
   } catch (e) {
+    refund(acct.key, 'image');
     if (!ac.signal.aborted) { console.warn('[image]', e.message); res.status(502).json({ error: e.message || 'Bild fehlgeschlagen' }); }
   } finally { imageBusy = false; }
 });
 
 // ---------- Videos ----------
-const videoLimiter = rateLimit({ windowMs: 10 * 60 * 1000, max: 4, message: 'Zu viele Videos in kurzer Zeit. Bitte später erneut.' });
+const videoLimiter = rateLimit({ windowMs: 10 * 60 * 1000, max: 6, message: 'Zu viele Videos in kurzer Zeit. Bitte später erneut.' });
 router.post('/video', videoLimiter, async (req, res) => {
   if (!videoEnabled()) return res.status(501).json({ error: 'Videoerstellung ist nicht eingerichtet (VIDEO_API_KEY in der .env).' });
   const prompt = String(req.body?.prompt || '').trim().slice(0, 1500);
   if (!prompt) return res.status(400).json({ error: 'Bitte beschreibe das Video.' });
-  try { res.status(202).json({ id: await startVideo(prompt) }); }
-  catch (e) { console.warn('[video]', e.message); res.status(502).json({ error: e.message }); }
+  const acct = accountOf(req);
+  const q = reserve(acct.key, 'video', acct);
+  if (!q.ok) return res.status(q.status).json({ error: q.error });
+  try { res.status(202).json({ id: await startVideo(prompt, { onFail: () => refund(acct.key, 'video') }) }); }
+  catch (e) { refund(acct.key, 'video'); console.warn('[video]', e.message); res.status(502).json({ error: e.message }); }
 });
 router.get('/video/:id', lightLimiter, async (req, res) => {
   try { res.json(await videoStatus(req.params.id)); }
@@ -196,6 +224,67 @@ router.get('/video/:id/file', lightLimiter, (req, res) => {
   if (!file || !fs.existsSync(file)) return res.status(404).json({ error: 'Video nicht gefunden' });
   res.setHeader('Content-Type', 'video/mp4');
   fs.createReadStream(file).pipe(res);
+});
+
+// ---------- AI Core Pro ----------
+const proLimiter = rateLimit({ windowMs: 10 * 60 * 1000, max: 12, message: 'Zu viele Versuche. Bitte später erneut.' });
+const needAccount = (req, res) => {
+  if (authEnabled()) return true;
+  res.status(400).json({ error: 'Pro gehört zu einem Konto. Ohne Anmeldung gibt es keine Konten, hier ist ohnehin alles frei.' });
+  return false;
+};
+/** Rückkehradresse: nur die eigene Seite oder eine erlaubte (GitHub-Seite), sonst PUBLIC_URL. */
+function returnBase(req) {
+  try {
+    const u = new URL(String(req.body?.returnUrl || ''));
+    if (['http:', 'https:'].includes(u.protocol) && (u.host === req.headers.host || originAllowed(u.origin))) return u.origin + u.pathname;
+  } catch { /* weiter */ }
+  return process.env.PUBLIC_URL ? String(process.env.PUBLIC_URL).replace(/\/+$/, '') + '/' : null;
+}
+
+router.get('/plan', lightLimiter, async (req, res) => {
+  const acct = accountOf(req);
+  await syncStripe(acct.key);
+  res.json({ ...planStatus(acct.key, acct), billing: { stripe: stripeEnabled(), codes: codesEnabled(), price: process.env.PRO_PRICE_LABEL || '' } });
+});
+
+router.post('/pro/checkout', proLimiter, async (req, res) => {
+  if (!stripeEnabled()) return res.status(501).json({ error: 'Bezahlung ist nicht eingerichtet (STRIPE_SECRET_KEY und STRIPE_PRICE_ID in der .env).' });
+  if (!needAccount(req, res)) return;
+  const base = returnBase(req);
+  if (!base) return res.status(400).json({ error: 'Rückkehradresse ungültig. Trage PUBLIC_URL in der .env ein.' });
+  const acct = accountOf(req);
+  try {
+    const url = await createCheckout({ key: acct.key, email: acct.session?.email, successUrl: `${base}#pro=success&session_id={CHECKOUT_SESSION_ID}`, cancelUrl: `${base}#pro=cancel` });
+    res.json({ url });
+  } catch (e) { console.warn('[pro]', e.message); res.status(502).json({ error: e.message }); }
+});
+
+router.post('/pro/confirm', proLimiter, async (req, res) => {
+  if (!stripeEnabled()) return res.status(501).json({ error: 'Bezahlung ist nicht eingerichtet.' });
+  if (!needAccount(req, res)) return;
+  const acct = accountOf(req);
+  try {
+    grantPro(acct.key, { source: 'stripe', ...(await confirmCheckout(req.body?.sessionId, acct.key)) });
+    res.json(planStatus(acct.key, acct));
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+router.post('/pro/portal', proLimiter, async (req, res) => {
+  const acct = accountOf(req);
+  const info = proInfo(acct.key);
+  const base = returnBase(req);
+  if (!stripeEnabled() || !info?.customer || !base) return res.status(400).json({ error: 'Kein Abo zum Verwalten gefunden.' });
+  try { res.json({ url: await createPortal(info.customer, base) }); }
+  catch (e) { res.status(502).json({ error: e.message }); }
+});
+
+router.post('/pro/redeem', proLimiter, (req, res) => {
+  if (!needAccount(req, res)) return;
+  const acct = accountOf(req);
+  const r = redeemCode(acct.key, String(req.body?.code || '').slice(0, 80));
+  if (!r.ok) return res.status(r.status).json({ error: r.error });
+  res.json(planStatus(acct.key, acct));
 });
 
 // ---------- Code-Vorschau (HTML/SVG im Sandbox-iframe) ----------

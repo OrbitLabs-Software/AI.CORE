@@ -26,6 +26,7 @@ export function openSettingsModal({ store, initialTab, authRequired, user, onThe
       models: { label: 'Modelle', render: renderModels },
       memory: { label: 'Erinnerungen', render: renderMemory },
       roles: { label: 'Rollen', render: renderRoles },
+      pro: { label: 'Pro', render: renderPro },
       data: { label: 'Daten', render: renderData },
       about: { label: 'Über', render: renderAbout },
     },
@@ -278,10 +279,48 @@ export function openSettingsModal({ store, initialTab, authRequired, user, onThe
   }
 
   // ---------- Über ----------
+  // ---------- Pro ----------
+  function renderPro() {
+    const wrap = el('div');
+    wrap.innerHTML = '<div class="note">Lade …</div>';
+    const returnUrl = () => location.origin + location.pathname;
+    const fail = (e) => showToast(e.message || 'Das hat nicht geklappt');
+    const bar = (label, used, max) => `<div class="pro-use"><div class="pro-use-head"><span>${label}</span><b>${used} von ${max}</b></div><div class="pro-bar"><i style="width:${max ? Math.min(100, used / max * 100) : 100}%"></i></div></div>`;
+
+    const draw = (p) => {
+      const until = p.until ? new Date(p.until).toLocaleDateString('de-AT') : '';
+      const status = p.unlimited ? `${badge('Unbegrenzt', 'ok')}` : p.pro ? `${badge('Pro', 'ok')} <span class="settings-row-sub">aktiv bis ${until}</span>` : `${badge('Kostenlos')}`;
+      wrap.innerHTML = `
+        <div class="note"><b>AI Core Pro</b> ${status}<br>${p.unlimited ? 'Als Besitzer hast du keine Grenzen.' : 'Mehr Videos und Bilder pro Monat. Pro gehört zu deinem Konto und gilt auf allen Geräten.'}</div>
+        ${p.unlimited ? '' : `<div class="group-title">Dieser Monat</div>${bar('Videos', p.used.video, p.limits.video)}${bar('Bilder', p.used.image, p.limits.image)}`}
+        <div class="pro-actions"></div>
+        ${p.billing.codes ? `<div class="group-title">Code einlösen</div><div class="pro-code"><input class="text-input" id="pro-code" placeholder="Code eingeben" autocomplete="off" spellcheck="false"><button class="btn" id="pro-redeem">Einlösen</button></div>` : ''}
+        ${!p.billing.stripe && !p.billing.codes ? '<div class="note warn">Der Server hat noch keine Bezahlung eingerichtet (STRIPE_* in der .env, siehe README).</div>' : ''}`;
+      const actions = wrap.querySelector('.pro-actions');
+      if (!p.unlimited && !p.pro && p.billing.stripe) {
+        const b = el('button', { className: 'btn primary' }, `<b>AI Core Pro kaufen${p.billing.price ? ` · ${escapeHtml(p.billing.price)}` : ''}</b>`);
+        b.addEventListener('click', async () => { b.disabled = true; try { location.href = await api.proCheckout(returnUrl()); } catch (e) { b.disabled = false; fail(e); } });
+        actions.appendChild(b);
+      }
+      if (p.manageable) {
+        const b = el('button', { className: 'btn' }, 'Abo verwalten oder kündigen');
+        b.addEventListener('click', async () => { try { location.href = await api.proPortal(returnUrl()); } catch (e) { fail(e); } });
+        actions.appendChild(b);
+      }
+      wrap.querySelector('#pro-redeem')?.addEventListener('click', async () => {
+        const input = wrap.querySelector('#pro-code');
+        if (!input.value.trim()) return input.focus();
+        try { draw({ ...(await api.proRedeem(input.value.trim())), billing: p.billing }); showToast('Pro ist aktiv. Danke!'); } catch (e) { fail(e); }
+      });
+    };
+    api.plan().then(draw).catch(e => { wrap.innerHTML = `<div class="note warn">${escapeHtml(e.message || 'Tarif konnte nicht geladen werden')}</div>`; });
+    return wrap;
+  }
+
   function renderAbout() {
     const wrap = el('div');
     wrap.innerHTML = `
-      <div class="note"><b>AI Core 3.2</b> · deine eigene AI-Chat-Plattform von OrbitLabs.<br>Lokale Modelle über Ollama, optional DeepSeek V4.1 Flash in der Cloud.</div>
+      <div class="note"><b>AI Core 3.3</b> · deine eigene AI-Chat-Plattform von OrbitLabs.<br>Lokale Modelle über Ollama, optional DeepSeek V4.1 Flash in der Cloud.</div>
       <div class="group-title">Tastenkürzel</div>
       <div class="settings-row-sub" style="line-height:2">
         <kbd>Enter</kbd> senden · <kbd>Shift</kbd>+<kbd>Enter</kbd> neue Zeile<br>

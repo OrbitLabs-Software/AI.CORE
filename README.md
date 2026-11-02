@@ -58,6 +58,20 @@ Die Dateien entstehen im Browser (`src/js/xlsx.js`, `pptx.js`, `pdf.js`, `docx.j
 - **Bilder (`/bild ...`) und Videos (`/video ...`):** Der Tiny hat keine Grafikkarte. Trage in der `.env` einen Schlüssel eines Anbieters mit OpenAI-kompatibler Schnittstelle ein (`IMAGE_API_KEY`, `VIDEO_API_KEY`, siehe `.env.example`). Die Beschreibung geht dann ins Internet, und Videos dauern Minuten und kosten beim Anbieter Geld. Ohne Schlüssel bleibt beides aus.
 - **Projekte:** In der Seitenleiste unter „Projekte“. Dateien eines Projekts werden auf rund 12 000 Zeichen gekürzt, damit das lokale Modell noch Platz zum Antworten hat.
 
+## Videos, Kontingente und Pro
+
+**Video über Hugging Face:** `HF_TOKEN` in der `.env` eintragen (Token mit Berechtigung „Inference Providers“) und auf dem Server `npm install @huggingface/inference` ausführen. Welche Modelle gerade Videos können, zeigt `https://huggingface.co/api/models?inference_provider=all&pipeline_tag=text-to-video`; das Modell steht in `HF_VIDEO_MODEL`. Ein Video kostet Guthaben beim Anbieter. Das kleine Gratis-Guthaben eines Kontos gilt für den ganzen Server, nicht pro Nutzer, und reicht nur für wenige Clips. Setze deshalb `VIDEO_MAX_PER_MONTH_TOTAL` auf eine Zahl, die dein Budget verträgt.
+
+**Kontingente:** Pro Konto und Kalendermonat. Voreinstellung gratis 1 Video und 10 Bilder, Pro 20 Videos und 200 Bilder. Wer in `OWNER_UIDS` steht, hat keine Grenzen.
+
+**Pro verkaufen mit Stripe:**
+1. In Stripe ein Produkt mit einem Abo-Preis anlegen, die Preis-ID (`price_...`) kopieren.
+2. In der `.env`: `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`, `PRO_PRICE_LABEL` (zum Beispiel `4,99 € / Monat`) und für den Livebetrieb `PUBLIC_URL` (deine GitHub-Seite).
+3. Im Stripe-Dashboard das Kundenportal einschalten, damit „Abo verwalten“ funktioniert.
+4. Erst im Testmodus ausprobieren (Testkarte 4242 4242 4242 4242).
+
+Einen Webhook brauchst du nicht: Nach der Zahlung fragt der Server Stripe selbst, und am Ende jeder Abo-Periode prüft er das Abo erneut. Im Livemodus verlangt Stripe eine https-Rückkehradresse, dafür eignet sich die GitHub-Seite. Wer Pro an andere verkauft, braucht dafür ein Gewerbe, Impressum, AGB und die Widerrufsbelehrung; das ist ein Thema für Steuerberatung oder Rechtsberatung, nicht für diese App.
+
 ## Funktionen
 
 **Modelle**
