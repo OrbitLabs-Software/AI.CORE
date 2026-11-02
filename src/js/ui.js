@@ -1,5 +1,7 @@
 // ui.js — Hilfen für die Oberfläche: Markdown mit Code-Hervorhebung, Datum, Download, Hinweise.
 
+import { formatsFor, FORMAT_LABEL } from './formatsMeta.js';
+
 export function escapeHtml(s) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
@@ -79,7 +81,7 @@ export function highlight(code, lang) {
 }
 
 // ---------- Code-Blöcke ----------
-export const EXT = { js: 'js', javascript: 'js', jsx: 'jsx', ts: 'ts', typescript: 'ts', tsx: 'tsx', py: 'py', python: 'py', html: 'html', css: 'css', json: 'json', sh: 'sh', bash: 'sh', shell: 'sh', svg: 'svg', md: 'md', markdown: 'md', java: 'java', c: 'c', cpp: 'cpp', cs: 'cs', go: 'go', rs: 'rs', rust: 'rs', php: 'php', sql: 'sql', yaml: 'yml', yml: 'yml', xml: 'xml', vue: 'vue', txt: 'txt' };
+export const EXT = { js: 'js', javascript: 'js', jsx: 'jsx', ts: 'ts', typescript: 'ts', tsx: 'tsx', py: 'py', python: 'py', html: 'html', css: 'css', json: 'json', sh: 'sh', bash: 'sh', shell: 'sh', svg: 'svg', md: 'md', markdown: 'md', java: 'java', c: 'c', cpp: 'cpp', cs: 'cs', go: 'go', rs: 'rs', rust: 'rs', php: 'php', sql: 'sql', yaml: 'yml', yml: 'yml', xml: 'xml', vue: 'vue', txt: 'txt', csv: 'csv', tsv: 'tsv', ics: 'ics', vcf: 'vcf', ini: 'ini', toml: 'toml', rb: 'rb', swift: 'swift', kt: 'kt', dart: 'dart', lua: 'lua', tex: 'tex', bat: 'bat', ps1: 'ps1', xlsx: 'xlsx', pptx: 'pptx', pdf: 'pdf', docx: 'docx', zip: 'zip' };
 export const isPreviewable = (lang) => ['html', 'svg'].includes(String(lang || '').toLowerCase());
 
 /** "js:app.js", "html index.html", `js title="app.js"` → { lang, file } */
@@ -93,8 +95,10 @@ function blockHtml(info, code, open) {
   const { lang, file } = parseFenceInfo(info);
   const label = lang || 'text';
   const lines = code.split('\n').length;
+  const exports = open ? '' : formatsFor(lang).map(f => `<button type="button" class="primary" data-code-export data-fmt="${f}" title="Als ${FORMAT_LABEL[f]}-Datei speichern">⬇ ${FORMAT_LABEL[f]}</button>`).join('');
   const actions = open ? '' : `
         <div class="code-actions">
+          ${exports}
           ${isPreviewable(lang) ? '<button type="button" class="primary" data-code-preview title="Vorschau rechts anzeigen">▶ Vorschau</button>' : (lines >= 12 ? '<button type="button" data-code-open title="Rechts im Panel öffnen">Öffnen</button>' : '')}
           <button type="button" data-code-download title="Als Datei speichern">Laden</button>
           <button type="button" data-code-copy>Kopieren</button>

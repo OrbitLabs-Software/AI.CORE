@@ -1,7 +1,7 @@
 // artifacts.js — das Panel rechts: Vorschau (Sandbox) und Code zu einem Code-Block.
 
 import { api } from './api.js';
-import { downloadFile, showToast, highlight, isPreviewable, EXT } from './ui.js';
+import { showToast, highlight, isPreviewable } from './ui.js';
 
 export function createArtifactPanel({ onToggle = () => {} } = {}) {
   const $ = (id) => document.getElementById(id);
@@ -10,7 +10,7 @@ export function createArtifactPanel({ onToggle = () => {} } = {}) {
   const codeEl = $('artifact-code');
   const empty = $('artifact-empty');
   const tabs = $('artifact-tabs');
-  let state = null;     // { code, lang, file, url }
+  let state = null;     // { code, lang, file, url, previewCode (gebündelt aus mehreren Dateien) }
   let token = 0;        // verwirft veraltete Antworten beim schnellen Wechseln
 
   const isOpen = () => !panel.hidden;
@@ -28,7 +28,7 @@ export function createArtifactPanel({ onToggle = () => {} } = {}) {
     empty.hidden = true;
     try {
       const kind = state.lang === 'svg' ? 'svg' : 'html';
-      const p = await api.preview(kind, state.code);
+      const p = await api.preview(kind, state.previewCode ?? state.code);
       if (mine !== token) return;
       state.url = p.url || null;
       if (p.srcdoc) { frame.removeAttribute('src'); frame.srcdoc = p.srcdoc; } else { frame.removeAttribute('srcdoc'); frame.src = p.url; }
@@ -40,8 +40,8 @@ export function createArtifactPanel({ onToggle = () => {} } = {}) {
     }
   }
 
-  function open({ code, lang = '', file = '', mode } = {}) {
-    state = { code: String(code ?? ''), lang: String(lang).toLowerCase(), file, url: null };
+  function open({ code, lang = '', file = '', mode, previewCode } = {}) {
+    state = { code: String(code ?? ''), lang: String(lang).toLowerCase(), file, url: null, previewCode: previewCode ?? null };
     const lines = state.code.split('\n').length;
     $('artifact-name').textContent = file || (state.lang ? state.lang.toUpperCase() : 'Code');
     $('artifact-meta').textContent = `${lines} Zeilen`;
@@ -83,10 +83,10 @@ export function createArtifactPanel({ onToggle = () => {} } = {}) {
     navigator.clipboard?.writeText(state.code);
     showToast('Code kopiert');
   });
-  $('artifact-download').addEventListener('click', () => {
+  $('artifact-download').addEventListener('click', async () => {
     if (!state) return;
-    const ext = EXT[state.lang] || state.lang || 'txt';
-    downloadFile(state.file || `code.${ext}`, state.code, state.lang === 'html' ? 'text/html' : 'text/plain');
+    const { saveBlock } = await import('./formats.js');
+    try { await saveBlock({ code: state.code, lang: state.lang, file: state.file }); } catch (e) { showToast(`Speichern nicht möglich: ${e.message}`); }
   });
   $('artifact-open').addEventListener('click', () => {
     if (state?.url) window.open(state.url, '_blank', 'noopener');

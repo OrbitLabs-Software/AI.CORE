@@ -16,7 +16,7 @@ import { createShare, readShare, deleteShare, shareEnabled } from './share.js';
 import { generateImage, imageEnabled } from './image.js';
 import { startVideo, videoStatus, videoFile, videoEnabled } from './video.js';
 
-export const VERSION = '3.1.0';
+export const VERSION = '3.2.0';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024, files: 1 } });
 

@@ -1,4 +1,4 @@
-# AI Core 3.1
+# AI Core 3.2
 
 Deine eigene AI-Chat-Plattform von OrbitLabs: lokale Modelle über **Ollama** auf dem Tiny, optional ein starkes
 Cloud-Modell (**DeepSeek V4.1 Flash**), Erinnerungen, ein Coder-Modus mit Live-Vorschau und Login wie auf der OrbitLabs-Webseite.
@@ -16,7 +16,7 @@ curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo apt install -y nodejs
 
 # 3. AI Core
-unzip ai-core-3.0.zip && cd ai-core
+unzip ai-core-3.2.zip && cd ai-core
 npm install
 cp .env.example .env
 npm start
@@ -44,6 +44,13 @@ Die Seite ruft `http://192.168.1.190:3000` im Hintergrund ab. Chats bleiben im B
 Chrome und Edge fragen einmal nach dem Zugriff aufs lokale Netzwerk, bitte *Zulassen*. Safari (iPhone) blockiert das;
 dafür dem Tiny eine HTTPS-Adresse geben (zum Beispiel mit Tailscale `tailscale serve`) und diese im Anmeldefenster eintragen.
 Die Adresse `http://192.168.1.190:3000` zeigt die Oberfläche weiterhin selbst an und funktioniert immer.
+
+## Dateien erstellen (3.2)
+
+`/datei Excel mit Haushaltsbudget` startet den Dateien-Modus. Die KI gibt die Datei als Code-Block aus
+(```` ```xlsx ````, ```` ```pptx ````, ```` ```pdf ````, ```` ```docx ````, ```` ```zip ````); der Knopf im Block-Kopf erzeugt die fertige Datei.
+Unter jeder Antwort gibt es außerdem das Menü **Datei**: Word, PDF, PowerPoint (bei mehreren Überschriften), Excel (bei Tabellen), Markdown, Text.
+Die Dateien entstehen im Browser (`src/js/xlsx.js`, `pptx.js`, `pdf.js`, `docx.js`, `zip.js`); der Server speichert nichts.
 
 ## Bilder, Videos, Teilen
 

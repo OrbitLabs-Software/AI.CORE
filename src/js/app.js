@@ -18,7 +18,7 @@ import { mountLogin, mountConnect } from './login.js';
 import { isCrossOrigin } from './config.js';
 import { STYLES, buildSystem } from './styles.js';
 import { createProjectStore, openProjectDialog } from './projects.js';
-import { markdownToDocx, DOCX_MIME } from './docx.js';
+import { bundleHtml } from './bundle.js';
 import { shareIdFromHash, showShared } from './sharedView.js';
 
 // ---------- DOM ----------
@@ -70,6 +70,12 @@ const SUGGESTIONS = {
     { icon: '💡', title: 'Idee ausarbeiten', sub: 'Von der Notiz zum Plan', prompt: 'Hilf mir, diese Idee auszuarbeiten: ' },
     { icon: '📄', title: 'Datei zusammenfassen', sub: 'PDF, Word oder Text anhängen', prompt: 'Fasse die angehängte Datei in fünf Stichpunkten zusammen.' },
     { icon: '🧠', title: 'Etwas erklären', sub: 'Einfach und Schritt für Schritt', prompt: 'Erkläre mir einfach: ' },
+  ],
+  files: [
+    { icon: '📊', title: 'Excel-Tabelle', sub: 'Mit Summen und Formeln', prompt: 'Erstelle eine Excel-Tabelle für ' },
+    { icon: '📽️', title: 'Präsentation', sub: 'PowerPoint mit Titelfolie', prompt: 'Erstelle eine Präsentation mit 6 Folien über ' },
+    { icon: '📝', title: 'Word oder PDF', sub: 'Brief, Bericht, Anleitung', prompt: 'Schreibe als Word-Dokument: ' },
+    { icon: '🗂️', title: 'ZIP mit Dateien', sub: 'Mehrere Dateien in einem Paket', prompt: 'Erstelle ein ZIP mit den Dateien für ' },
   ],
   coder: [
     { icon: '🌐', title: 'Webseite bauen', sub: 'Eine Datei, sofort in der Vorschau', prompt: 'Baue eine moderne Landingpage für ' },
@@ -160,10 +166,12 @@ function renderWelcome(roleId) {
     : 'Woran arbeiten wir <span class="grad">heute</span>?';
   $('welcome-sub').textContent = roleId === 'coder'
     ? 'Beschreibe, was du bauen willst. HTML und SVG siehst du sofort in der Vorschau.'
-    : 'Stelle eine Frage, hänge eine Datei an oder wähle einen Vorschlag.';
+    : roleId === 'files'
+      ? 'Sag, welche Datei du brauchst. Unter der Antwort erscheint ein Knopf, der sie erzeugt.'
+      : 'Stelle eine Frage, hänge eine Datei an oder wähle einen Vorschlag.';
   const box = $('suggestion-cards');
   box.innerHTML = '';
-  for (const s of SUGGESTIONS[roleId === 'coder' ? 'coder' : 'default']) {
+  for (const s of SUGGESTIONS[SUGGESTIONS[roleId] ? roleId : 'default']) {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'suggestion-card';
@@ -184,7 +192,7 @@ function messageHandlers(chat) {
     onSpeak: speak,
     onFeedback: (m, v) => { m.feedback = m.feedback === v ? null : v; store.save(); renderMessages({ keepScroll: true }); },
     onZip: downloadZip,
-    onDocx: (m) => downloadFile(`${(chat.title || 'antwort').replace(/[^\wäöüÄÖÜß -]+/g, '').trim().slice(0, 40) || 'antwort'}.docx`, markdownToDocx(m.content), DOCX_MIME),
+    onExport: (m, fmt) => exportAnswer(m, fmt, chat),
     onVersion: (m, d) => {
       const i = (m.vIdx ?? m.versions.length - 1) + d, v = m.versions[i];
       if (!v) return;
@@ -305,6 +313,12 @@ function newChat(roleId = null) {
 function startCoder() {
   newChat('coder');
   showToast('Coder-Modus: Vorschau erscheint rechts, sobald HTML kommt');
+}
+
+function startFiles(args) {
+  newChat('files');
+  showToast('Dateien-Modus: Excel, PowerPoint, Word, PDF, ZIP …');
+  if (args) handleSubmit(args);
 }
 
 function closeDrawer() { appEl.classList.remove('drawer-open'); }
@@ -471,11 +485,39 @@ function editMessage(chatId, message) {
 }
 
 // ---------- Code: Vorschau, Download, ZIP ----------
-function handleCodeAction(type, { code, lang, file }) {
+/** HTML mit zugehörigen CSS/JS-Blöcken derselben Antwort zu einer Vorschau-Seite bündeln. */
+function withBundle(block, message) {
+  if (block.lang !== 'html' || !message) return block;
+  const siblings = extractCodeBlocks(message.content).filter(b => b.code !== block.code);
+  const r = bundleHtml(block.code, siblings);
+  if (r.missing.length) showToast(`In der Vorschau fehlen: ${[...new Set(r.missing)].join(', ')}`);
+  return r.inlined.length ? { ...block, previewCode: r.html } : block;
+}
+
+async function saveFile(run) {
+  try {
+    const r = await run();
+    if (r) showToast(`Gespeichert: ${r.name || r}`);
+  } catch (e) { showToast(`Datei konnte nicht erstellt werden: ${e.message}`); }
+}
+
+function handleCodeAction(type, block, btn, message) {
+  const { code, lang, file } = block;
   if (type === 'copy') { navigator.clipboard?.writeText(code); showToast('Code kopiert'); }
-  else if (type === 'download') downloadFile(file || `code.${EXT[lang] || lang || 'txt'}`, code, lang === 'html' ? 'text/html' : 'text/plain');
-  else if (type === 'preview') panel.open({ code, lang, file });
+  else if (type === 'download') saveFile(async () => (await import('./formats.js')).saveBlock(block));
+  else if (type === 'export') saveFile(async () => (await import('./formats.js')).saveBlock(block, btn?.dataset.fmt));
+  else if (type === 'preview') panel.open(withBundle(block, message));
   else if (type === 'open') panel.open({ code, lang, file, mode: 'code' });
+}
+
+function exportAnswer(message, fmt, chat) {
+  saveFile(async () => {
+    const { exportMessage } = await import('./formats.js');
+    const r = exportMessage(message.content, fmt, chat?.title || 'antwort');
+    if (!r) throw new Error('Format nicht verfügbar');
+    downloadFile(r.name, r.blob);
+    return r;
+  });
 }
 
 function downloadZip(message) {
@@ -495,14 +537,15 @@ function downloadZip(message) {
 function maybeAutoPreview(message) {
   if (!settings.autoPreview || window.innerWidth <= 1100) return;
   const blocks = extractCodeBlocks(message.content).filter(b => isPreviewable(b.lang) && b.code.split('\n').length >= 6);
-  if (blocks.length) panel.open(blocks[blocks.length - 1]);
+  if (blocks.length) panel.open(withBundle(blocks[blocks.length - 1], message));
 }
 
 function togglePanel() {
   if (panel.isOpen()) return panel.close();
   const blocks = (store.getActive()?.messages || []).filter(m => m.role === 'assistant').flatMap(m => extractCodeBlocks(m.content));
   const last = [...blocks].reverse().find(b => isPreviewable(b.lang)) || blocks[blocks.length - 1];
-  if (last) panel.open(last); else panel.showEmpty();
+  const owner = (store.getActive()?.messages || []).filter(m => m.role === 'assistant').reverse().find(m => last && m.content.includes(last.code));
+  if (last) panel.open(withBundle(last, owner)); else panel.showEmpty();
 }
 
 // ---------- Vorlesen ----------
@@ -685,6 +728,7 @@ const COMMANDS = [
   { name: 'teilenaus', hint: 'Teilen dieses Chats beenden', run: unshareCurrent },
   { name: 'neu', hint: 'Neuer Chat', run: () => newChat() },
   { name: 'coder', hint: 'Coder-Modus mit Vorschau starten', run: startCoder },
+  { name: 'datei', args: true, hint: 'Dateien erstellen, z. B. /datei Excel mit Haushaltsbudget', run: startFiles },
   { name: 'rolle', args: true, hint: 'Rolle wählen, z. B. /rolle coder', run: setRoleByName },
   { name: 'merken', args: true, hint: 'Etwas merken, z. B. /merken Ich bin Vegetarier', run: (a) => remember(a) },
   { name: 'vergessen', hint: 'Erinnerungen ansehen und löschen', run: () => openSettings('memory') },

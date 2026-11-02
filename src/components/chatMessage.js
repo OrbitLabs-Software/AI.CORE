@@ -1,4 +1,14 @@
 import { renderMarkdown, escapeHtml, extractCodeBlocks } from '../js/ui.js';
+import { messageExports } from '../js/formatsMeta.js';
+
+// Datei-Menü unter einer Antwort schließen, wenn man daneben klickt (einmal für die ganze Seite).
+if (typeof document !== 'undefined' && !globalThis.__aicoreExportClose) {
+  globalThis.__aicoreExportClose = true;
+  document.addEventListener('click', (e) => {
+    if (e.target.closest?.('.export-wrap')) return;
+    document.querySelectorAll('.export-menu:not([hidden])').forEach(m => { m.hidden = true; });
+  });
+}
 
 const I = {
   copy: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
@@ -75,11 +85,11 @@ export function renderMessageEl(message, h = {}) {
 
   // Klicks auf Code-Knöpfe: ein Listener, der auch beim Streamen (neuer innerHTML) erhalten bleibt
   content.addEventListener('click', (e) => {
-    const b = e.target.closest('[data-code-copy],[data-code-preview],[data-code-open],[data-code-download]');
+    const b = e.target.closest('[data-code-copy],[data-code-preview],[data-code-open],[data-code-download],[data-code-export]');
     if (!b) return;
     const block = b.closest('.code-block');
-    const type = ['copy', 'preview', 'open', 'download'].find(t => b.hasAttribute(`data-code-${t}`));
-    h.onCode?.(type, { code: block.querySelector('code').textContent, lang: block.dataset.lang, file: block.dataset.file }, b);
+    const type = ['copy', 'preview', 'open', 'download', 'export'].find(t => b.hasAttribute(`data-code-${t}`));
+    h.onCode?.(type, { code: block.querySelector('code').textContent, lang: block.dataset.lang, file: block.dataset.file }, b, message);
   });
 
   if (message.notice === 'trimmed') {
@@ -99,16 +109,22 @@ export function renderMessageEl(message, h = {}) {
         btn('regenerate', I.redo, 'Neu', 'Antwort neu generieren') +
         btn('up', I.up, '', 'Hilfreiche Antwort', message.feedback === 'up' ? 'on' : '') +
         btn('down', I.down, '', 'Nicht hilfreich', message.feedback === 'down' ? 'on' : '') +
-        btn('docx', I.doc, 'Word', 'Als Word-Datei speichern') +
+        `<span class="export-wrap">${btn('export', I.doc, 'Datei ▾', 'Antwort als Datei speichern (Word, PDF, Excel, PowerPoint …)')}<div class="export-menu" role="menu" hidden>${messageExports(message.content).map(x => `<button type="button" role="menuitem" data-fmt="${x.fmt}">${x.label}</button>`).join('')}</div></span>` +
         versionSwitch(message) +
         (zipN >= 2 ? btn('zip', I.zip, `ZIP (${zipN})`, 'Alle Code-Dateien als ZIP laden') : '');
       actions.addEventListener('click', (e) => {
+        const fmtBtn = e.target.closest('.export-menu [data-fmt]');
+        if (fmtBtn) { fmtBtn.closest('.export-menu').hidden = true; h.onExport?.(message, fmtBtn.dataset.fmt); return; }
         const act = e.target.closest('[data-act]')?.dataset.act;
+        if (act === 'export') {
+          const menu = actions.querySelector('.export-menu');
+          document.querySelectorAll('.export-menu').forEach(m => { if (m !== menu) m.hidden = true; });
+          menu.hidden = !menu.hidden;
+        }
         if (act === 'copy') h.onCopy?.(message);
         if (act === 'speak') h.onSpeak?.(message);
         if (act === 'regenerate') h.onRegenerate?.(message);
         if (act === 'zip') h.onZip?.(message);
-        if (act === 'docx') h.onDocx?.(message);
         if (act === 'vprev') h.onVersion?.(message, -1);
         if (act === 'vnext') h.onVersion?.(message, 1);
         if (act === 'up' || act === 'down') h.onFeedback?.(message, act);

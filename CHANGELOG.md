@@ -1,5 +1,21 @@
 # Änderungen
 
+## 3.2.0
+
+**Dateien erstellen:** Die KI schreibt den Inhalt, ein Knopf macht daraus die fertige Datei. Alles läuft im Browser,
+ohne Server-Bibliothek und ohne `npm install` — auch auf GitHub Pages.
+
+- **Excel (.xlsx):** CSV (`;` `,` Tab), Markdown-Tabelle oder JSON. Zahlen, Prozent und Euro werden erkannt, Formeln auch mit
+  deutschen Namen (`=SUMME(B2:B9)`), mehrere Blätter (`=== Blatt: Name ===`), Kopfzeile fixiert.
+- **PowerPoint (.pptx):** `# Titel` = Titelfolie, `## Folie` + Stichpunkte; lange Folien werden geteilt, Schriftgröße passt sich an.
+- **PDF:** Markdown mit Überschriften, Listen, Tabellen, Code, Zitaten; Umlaute und €, Seitenzahlen.
+- **Word (.docx):** jetzt mit echten Tabellen, Kursiv, Zitaten und Trennlinien; der Denkprozess (`<think>`) bleibt draußen.
+- **ZIP:** ein Block mit `=== ordner/datei.ext ===` vor jeder Datei wird zum Archiv (Pfade werden bereinigt).
+- **PNG/JPG** aus SVG-Blöcken, **CSV mit Umlauten** für Excel, weitere Endungen (ics, vcf, toml …).
+- **Datei-Menü** unter jeder Antwort: Word, PDF, PowerPoint, Excel (bei Tabellen), Markdown, Text.
+- Befehl **/datei** und Rolle **Dateien** mit passenden Anweisungen für die Modelle.
+- **Coder mit mehreren Dateien:** `index.html` + `style.css` + `app.js` in einer Antwort werden für die Vorschau gebündelt.
+
 ## 3.1.0
 
 **GitHub-Pages-Betrieb:** Die Oberfläche kann auf GitHub liegen und den Server im Heimnetz ansprechen

@@ -281,11 +281,11 @@ export function openSettingsModal({ store, initialTab, authRequired, user, onThe
   function renderAbout() {
     const wrap = el('div');
     wrap.innerHTML = `
-      <div class="note"><b>AI Core 3.0</b> · deine eigene AI-Chat-Plattform von OrbitLabs.<br>Lokale Modelle über Ollama, optional DeepSeek V4.1 Flash in der Cloud.</div>
+      <div class="note"><b>AI Core 3.2</b> · deine eigene AI-Chat-Plattform von OrbitLabs.<br>Lokale Modelle über Ollama, optional DeepSeek V4.1 Flash in der Cloud.</div>
       <div class="group-title">Tastenkürzel</div>
       <div class="settings-row-sub" style="line-height:2">
         <kbd>Enter</kbd> senden · <kbd>Shift</kbd>+<kbd>Enter</kbd> neue Zeile<br>
-        <kbd>/</kbd> Befehle (<kbd>/neu</kbd> <kbd>/coder</kbd> <kbd>/merken</kbd> <kbd>/rolle</kbd> <kbd>/export</kbd> <kbd>/hilfe</kbd>)<br>
+        <kbd>/</kbd> Befehle (<kbd>/neu</kbd> <kbd>/coder</kbd> <kbd>/datei</kbd> <kbd>/merken</kbd> <kbd>/rolle</kbd> <kbd>/export</kbd> <kbd>/hilfe</kbd>)<br>
         <kbd>Esc</kbd> Antwort stoppen oder Panel schließen<br>
         <kbd>Strg</kbd>+<kbd>K</kbd> Chats durchsuchen · <kbd>Strg</kbd>+<kbd>Shift</kbd>+<kbd>O</kbd> neuer Chat<br>
         <kbd>?</kbd> diese Hilfe
