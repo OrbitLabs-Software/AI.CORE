@@ -20,6 +20,9 @@ import { STYLES, buildSystem } from './styles.js';
 import { createProjectStore, openProjectDialog } from './projects.js';
 import { bundleHtml } from './bundle.js';
 import { shareIdFromHash, showShared } from './sharedView.js';
+import { buildSearchContext } from './websearch.js';
+import { runJs } from './runner.js';
+import { openTemplateDialog, insertTemplate } from './templates.js';
 
 // ---------- DOM ----------
 const $ = (id) => document.getElementById(id);
@@ -225,6 +228,13 @@ function renderMessages({ keepScroll = false } = {}) {
   messageList.hidden = false;
   titleEl.textContent = (projects.get(chat.projectId) ? '📁 ' : '') + chat.title;
   const handlers = messageHandlers(chat);
+  if (chat.summary?.text) {
+    const note = document.createElement('div');
+    note.className = 'summary-note';
+    note.innerHTML = '<b>Frühere Nachrichten wurden zusammengefasst</b><details><summary>Zusammenfassung anzeigen</summary><pre></pre></details>';
+    note.querySelector('pre').textContent = chat.summary.text;
+    messageList.appendChild(note);
+  }
   for (const message of chat.messages) messageList.appendChild(renderMessageEl(message, handlers));
   updateContextMeter();
   if (!keepScroll) scrollToBottom();
@@ -382,6 +392,13 @@ function buildHistory(chat) {
   }));
 }
 
+let searchAck = false;
+/** Platz für Systemprompt-Zusätze (Suche, Projektdateien) in Zeichen, nach dem Kontextfenster des Modells. */
+const ctxChars = () => Math.max(2500, Math.min(20000, Math.round((health?.limits?.numCtx || 8192) * 1.5)));
+const userTexts = (chat) => chat.messages.filter(m => m.role === 'user' && !m.media).map(m => m.content);
+const lastUserText = (chat) => (userTexts(chat).at(-1) || '').replace(/\s+/g, ' ').trim();
+const recentUserText = (chat) => userTexts(chat).slice(-2).join(' ');
+
 async function runAssistantTurn(chatId, carry = null) {
   const chat = store.get(chatId);
   if (!chat) return;
@@ -399,10 +416,20 @@ async function runAssistantTurn(chatId, carry = null) {
   abortController = new AbortController();
   try {
     const role = getRole(settings, chat.roleId || settings.roleId);
+    let searchCtx = null;
+    const q = lastUserText(chat);
+    if ((settings.search || 'off') !== 'off' && appConfig.features?.search !== false && q.length >= 4) {
+      if (searchAck || confirm('Deine Frage wird für die Suche an einen Suchanbieter im Internet geschickt. Fortfahren?')) {
+        searchAck = true;
+        try { searchCtx = buildSearchContext((await api.search(q.slice(0, 200), settings.search === 'deep')).results, Math.round(ctxChars() * 0.5)); }
+        catch (e) { showToast(e.message || 'Die Websuche hat nicht geklappt'); }
+      }
+    }
+    if (searchCtx) assistant.sources = searchCtx.sources;
     const stream = api.streamChat({
       messages: buildHistory(chat),
       model: currentModel(),
-      system: buildSystem(role.prompt, settings, projects.get(chat.projectId)),
+      system: buildSystem(role.prompt, settings, projects.get(chat.projectId), { query: recentUserText(chat), budget: ctxChars(), search: searchCtx?.block, summary: chat.summary?.text }),
       temperature: settings.temperature ?? undefined,
       memory: settings.useMemory,
       signal: abortController.signal,
@@ -435,6 +462,7 @@ async function runAssistantTurn(chatId, carry = null) {
     typingIndicator.hidden = true;
     abortController = null;
 
+    window.dispatchEvent(new CustomEvent('aicore:turn-done', { detail: { text: started ? assistant.content : '' } }));
     const restoreVersions = () => {   // Abbruch oder Fehler beim Neu-Generieren: die alte Antwort bleibt erhalten
       if (!carry) return;
       const last = carry[carry.length - 1];
@@ -508,6 +536,31 @@ function handleCodeAction(type, block, btn, message) {
   else if (type === 'export') saveFile(async () => (await import('./formats.js')).saveBlock(block, btn?.dataset.fmt));
   else if (type === 'preview') panel.open(withBundle(block, message));
   else if (type === 'open') panel.open({ code, lang, file, mode: 'code' });
+  else if (type === 'run') runCodeBlock(code, btn);
+}
+
+async function runCodeBlock(code, btn) {
+  const block = btn.closest('.code-block') || btn.closest('pre')?.parentElement;
+  if (!block) return;
+  block.nextElementSibling?.classList.contains('run-out') && block.nextElementSibling.remove();
+  const out = document.createElement('div');
+  out.className = 'run-out';
+  out.innerHTML = '<div class="run-head"><span>Ausgabe</span><small>läuft …</small></div><pre></pre>';
+  block.after(out);
+  btn.disabled = true;
+  try {
+    const r = await runJs(code);
+    const pre = out.querySelector('pre');
+    if (!r.logs.length) pre.textContent = '(keine Ausgabe, nutze console.log)';
+    for (const l of r.logs) {
+      const line = document.createElement('div');
+      line.className = `run-${l.type}`;
+      line.textContent = l.text;
+      pre.appendChild(line);
+    }
+    out.querySelector('small').textContent = r.timedOut ? 'nach 8 Sekunden abgebrochen' : `fertig in ${r.ms} ms`;
+  } catch (e) { out.querySelector('pre').textContent = e.message || 'Ausführen fehlgeschlagen'; out.querySelector('small').textContent = ''; }
+  finally { btn.disabled = false; }
 }
 
 function exportAnswer(message, fmt, chat) {
@@ -606,6 +659,127 @@ function exportCurrent() {
   if (!chat || !chat.messages.length) return showToast('Dieser Chat ist noch leer');
   exportChatMarkdown(chat);
 }
+
+// ---------- Modell ohne Chat-Anzeige fragen (für Zusammenfassungen) ----------
+async function askModel(prompt, system) {
+  let text = '';
+  for await (const ev of api.streamChat({ messages: [{ role: 'user', content: prompt }], model: currentModel(), system, temperature: 0.2, memory: false, signal: abortController?.signal })) {
+    if (ev.delta) text += ev.delta;
+  }
+  return text.replace(/<think>[\s\S]*?(<\/think>|$)/g, '').trim();
+}
+
+/** Älteren Verlauf zusammenfassen und aus dem Chat nehmen; die Zusammenfassung geht in jede weitere Anfrage. */
+async function compressChat() {
+  const chat = store.getActive();
+  if (!chat) return showToast('Es gibt noch keinen Chat.');
+  if (busy) return showToast('Bitte warten, die KI antwortet gerade.');
+  const msgs = chat.messages.filter(m => !m.media);
+  if (msgs.length < 6) return showToast('Der Chat ist noch kurz genug.');
+  let keep = 4;
+  while (keep < msgs.length && msgs[msgs.length - keep].role !== 'user') keep++;
+  const old = msgs.slice(0, msgs.length - keep);
+  if (old.length < 2) return showToast('Der Chat ist noch kurz genug.');
+  const transcript = [chat.summary?.text && `Bisherige Zusammenfassung:\n${chat.summary.text}`,
+    ...old.map(m => `${m.role === 'user' ? 'Nutzer' : 'KI'}: ${m.content.replace(/<think>[\s\S]*?<\/think>/g, '').slice(0, 1500)}`)].filter(Boolean).join('\n\n').slice(-9000);
+  busy = true; composer.setBusy(true); typingIndicator.hidden = false;
+  abortController = new AbortController();
+  try {
+    const text = await askModel(`Fasse das folgende Gespräch in höchstens 8 Stichpunkten zusammen. Behalte Fakten, Entscheidungen, Namen, Zahlen und offene Fragen. Keine Einleitung.\n\n${transcript}`, 'Du fasst Gespräche knapp und genau auf Deutsch zusammen.');
+    if (text.length < 20) throw new Error('Die Zusammenfassung war leer.');
+    chat.summary = { text: text.slice(0, 3000) };
+    chat.messages = chat.messages.filter(m => !old.includes(m));
+    store.save();
+    showToast(`${old.length} ältere Nachrichten zusammengefasst`);
+  } catch (e) { if (e.name !== 'AbortError') showToast(e.message || 'Zusammenfassen hat nicht geklappt'); }
+  finally { busy = false; composer.setBusy(false); typingIndicator.hidden = true; renderSidebar(); renderMessages(); }
+}
+
+// ---------- Vorlagen ----------
+function openTemplates() {
+  openTemplateDialog({
+    settings, saveSettings: () => storage.saveSettings(settings), currentText: () => composerInput.value,
+    onUse: (text) => { insertTemplate(composerInput, (v) => composer.setValue(v), text); },
+  });
+}
+
+// ---------- Websuche-Schalter ----------
+const searchSelect = $('search-select');
+searchSelect.value = settings.search || 'off';
+searchSelect.addEventListener('change', () => {
+  settings.search = searchSelect.value; storage.saveSettings(settings);
+  if (settings.search !== 'off') showToast(settings.search === 'deep' ? 'Tiefe Recherche: die ersten Seiten werden gelesen (dauert länger).' : 'Websuche an: die Frage geht an einen Suchanbieter.');
+});
+
+// ---------- Sprachmodus ----------
+const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+const voiceBtn = $('voice-btn');
+let voice = null;
+if (SpeechRec && 'speechSynthesis' in window) { voiceBtn.hidden = false; voiceBtn.addEventListener('click', () => startVoice()); }
+
+function spokenText(content) {
+  return content.replace(/<think>[\s\S]*?(<\/think>|$)/g, '').replace(/```[\s\S]*?```/g, ' Den Code siehst du auf dem Bildschirm. ')
+    .replace(/\[(\d+)\]/g, '').replace(/[*_`#>|]/g, '').replace(/\s+/g, ' ').trim().slice(0, 1800);
+}
+
+function startVoice() {
+  if (voice) return stopVoice();
+  if (!SpeechRec || !('speechSynthesis' in window)) return showToast('Dein Browser kann keine Sprache. Chrome, Edge oder Safari gehen.');
+  if (busy) return showToast('Bitte warten, die KI antwortet gerade.');
+  const el = document.createElement('div');
+  el.className = 'vm-overlay';
+  el.innerHTML = '<div class="vm-orb" aria-hidden="true"></div><p class="vm-state" aria-live="polite"></p><p class="vm-text"></p><button type="button" class="btn">Beenden</button>';
+  document.body.appendChild(el);
+  voice = { el, rec: null, silent: 0, active: true };
+  el.querySelector('button').addEventListener('click', stopVoice);
+  voiceListen();
+}
+
+function voiceState(state, text = '') {
+  if (!voice) return;
+  voice.el.dataset.state = state;
+  voice.el.querySelector('.vm-state').textContent = { listen: 'Ich höre zu …', think: 'Ich denke nach …', speak: 'Ich spreche …' }[state] || '';
+  voice.el.querySelector('.vm-text').textContent = text;
+}
+
+function voiceListen() {
+  if (!voice?.active) return;
+  const rec = new SpeechRec();
+  voice.rec = rec;
+  rec.lang = 'de-AT'; rec.interimResults = true; rec.continuous = false;
+  let heard = '';
+  voiceState('listen');
+  rec.onresult = (e) => { heard = [...e.results].map(r => r[0].transcript).join(''); voiceState('listen', heard); };
+  rec.onerror = (e) => { if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { showToast('Mikrofon nicht erlaubt'); stopVoice(); } };
+  rec.onend = async () => {
+    if (!voice?.active || voice.rec !== rec) return;
+    if (heard.trim().length < 2) { if (++voice.silent >= 3) { showToast('Ich habe nichts gehört. Sprachmodus beendet.'); return stopVoice(); } return voiceListen(); }
+    voice.silent = 0;
+    voiceState('think', heard);
+    const done = new Promise(res => window.addEventListener('aicore:turn-done', (ev) => res(ev.detail.text), { once: true }));
+    await sendMessage(heard.trim());
+    const reply = await Promise.race([done, sleep(180000).then(() => '')]);
+    if (!voice?.active) return;
+    const text = spokenText(reply || '');
+    if (!text) return voiceListen();
+    voiceState('speak', text.slice(0, 160));
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'de-AT';
+    u.onend = u.onerror = () => voiceListen();
+    speechSynthesis.cancel(); speechSynthesis.speak(u);
+  };
+  try { rec.start(); } catch { stopVoice(); }
+}
+
+function stopVoice() {
+  if (!voice) return;
+  voice.active = false;
+  try { voice.rec?.abort(); } catch { /* egal */ }
+  speechSynthesis.cancel();
+  voice.el.remove();
+  voice = null;
+}
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && voice) stopVoice(); });
 
 // ---------- Bilder, Videos, Teilen ----------
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -722,6 +896,9 @@ function importShared(data) {
 $('share-btn').addEventListener('click', shareCurrent);
 
 const COMMANDS = [
+  { name: 'vorlage', hint: 'Vorlagen für häufige Aufgaben', run: openTemplates },
+  { name: 'komprimieren', hint: 'Älteren Verlauf zusammenfassen, damit der Chat weiterläuft', run: compressChat },
+  { name: 'sprache', hint: 'Sprachmodus: sprechen und zuhören', run: () => startVoice() },
   { name: 'bild', args: true, hint: 'Bild erzeugen, z. B. /bild ein Fuchs im Schnee', run: (a) => makeMedia('image', a) },
   { name: 'video', args: true, hint: 'Video erzeugen, z. B. /video Wellen am Strand', run: (a) => makeMedia('video', a) },
   { name: 'teilen', hint: 'Chat als Nur-Lesen-Link teilen', run: shareCurrent },

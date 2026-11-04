@@ -1,5 +1,16 @@
 # Änderungen
 
+## 3.4.0
+
+**Mehr KI-Funktionen**
+- **Websuche mit Quellen:** Schalter „Suche“ oben im Chat (Aus / Websuche / Tiefe Recherche). Die Antwort nennt Quellen als [1], [2], darunter stehen die Links. Bei „Tiefer Recherche“ werden die ersten drei Seiten gelesen. Seiten aus dem Heimnetz werden nie geladen (Schutz vor Zugriffen auf eigene Geräte).
+- **Wissenssuche in Projekten:** Große Projektdateien werden in Abschnitte geteilt, und nur die Abschnitte zur Frage gehen ans Modell. Kleine Projekte kommen weiter komplett mit.
+- **Code ausführen:** JavaScript-Blöcke haben „▶ Ausführen“. Der Code läuft abgeschottet (kein Zugriff auf AI Core, kein Netz, 8 Sekunden Zeitlimit) und zeigt console.log und Fehler.
+- **Sprachmodus** (`/sprache` oder Wellen-Symbol): sprechen, die KI antwortet laut, dann hört sie wieder zu. Beenden mit Esc.
+- **Verlauf komprimieren** (`/komprimieren`): fasst den Anfang eines langen Chats zusammen, damit das kleine Modell nicht den Faden verliert.
+- **Vorlagen** (`/vorlage`): 13 Aufgaben-Vorlagen mit Platzhaltern und eigene Vorlagen.
+- Die obere Leiste läuft bei vielen Auswahlfeldern nicht mehr über.
+
 ## 3.3.0
 
 **Videos über Hugging Face, Monats-Kontingente und AI Core Pro**

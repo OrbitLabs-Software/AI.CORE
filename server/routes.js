@@ -17,9 +17,10 @@ import { createShare, readShare, deleteShare, shareEnabled } from './share.js';
 import { generateImage, imageEnabled } from './image.js';
 import { startVideo, videoStatus, videoFile, videoEnabled } from './video.js';
 import { planStatus, reserve, refund, grantPro, revokePro, proInfo, redeemCode, codesEnabled } from './plan.js';
+import { webSearch, searchEnabled } from './search.js';
 import { stripeEnabled, createCheckout, confirmCheckout, subscriptionState, createPortal } from './stripe.js';
 
-export const VERSION = '3.3.0';
+export const VERSION = '3.4.0';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024, files: 1 } });
 
@@ -43,7 +44,7 @@ export const router = Router();
 // ---------- Öffentlich ----------
 router.get('/config', (req, res) => {
   const cfg = getConfig();
-  res.json({ version: VERSION, provider: cfg.provider, features: { image: imageEnabled(), video: videoEnabled(), share: shareEnabled(), pro: stripeEnabled() || codesEnabled() }, ...authInfo(req) });
+  res.json({ version: VERSION, provider: cfg.provider, features: { search: searchEnabled(), image: imageEnabled(), video: videoEnabled(), share: shareEnabled(), pro: stripeEnabled() || codesEnabled() }, ...authInfo(req) });
 });
 // Geteilte Chats lesen: ohne Anmeldung (der Link ist das Geheimnis).
 router.get('/share/:id', lightLimiter, (req, res) => {
@@ -160,6 +161,14 @@ router.post('/share', lightLimiter, (req, res) => {
 });
 router.delete('/share/:id', lightLimiter, (req, res) => {
   res.status(deleteShare(req.params.id, sessionFromRequest(req)?.sub || '') ? 200 : 404).json({ ok: true });
+});
+
+// ---------- Websuche ----------
+const searchLimiter = rateLimit({ windowMs: 60 * 1000, max: 15, message: 'Zu viele Suchen. Bitte kurz warten.' });
+router.post('/search', searchLimiter, async (req, res) => {
+  if (!searchEnabled()) return res.status(403).json({ error: 'Die Websuche ist abgeschaltet.' });
+  try { res.json(await webSearch(req.body?.query, { deep: req.body?.deep === true })); }
+  catch (e) { res.status(502).json({ error: e.message }); }
 });
 
 // ---------- Konto, Tarif, Kontingent ----------

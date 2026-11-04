@@ -141,6 +141,13 @@ export const api = {
     return res.ok;
   },
 
+  /** Websuche über den Server. deep = die ersten Seiten werden gelesen. */
+  async search(query, deep = false) {
+    const res = await jsonPost('/api/search', { query, deep });
+    if (!res.ok) throw new ApiError(await errorMessage(res), res.status);
+    return res.json();
+  },
+
   // ---------- Tarif ----------
   async plan() { const res = await request('/api/plan'); if (!res.ok) throw new ApiError(await errorMessage(res), res.status); return res.json(); },
   async proCheckout(returnUrl) {

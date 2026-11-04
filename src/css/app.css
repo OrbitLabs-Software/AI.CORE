@@ -489,3 +489,40 @@ body::before, :root[data-theme="light"] body::before, .lg-overlay::before { back
 .pro-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 4px; }
 .pro-code { display: flex; gap: 8px; }
 .pro-code .text-input { flex: 1; }
+
+/* ---------- Quellen, Code ausführen, Zusammenfassung, Sprachmodus, Vorlagen (3.4) ---------- */
+.sources { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0 2px; font: 12px var(--font); color: var(--text-3); }
+.sources a { padding: 3px 10px; border-radius: 99px; border: 1px solid var(--line-strong); background: var(--bg-1); color: var(--text-2); text-decoration: none; }
+.sources a:hover { border-color: var(--accent); color: var(--accent); }
+.run-out { margin: -4px 0 12px; border: 1px solid var(--line-strong); border-radius: 0 0 12px 12px; background: var(--bg-1); font: 13px var(--mono); overflow: hidden; }
+.run-head { display: flex; justify-content: space-between; padding: 6px 12px; background: var(--bg-2); color: var(--text-2); font: 12px var(--font); }
+.run-out pre { margin: 0; padding: 10px 12px; max-height: 260px; overflow: auto; white-space: pre-wrap; word-break: break-word; background: none; border: none; }
+.run-out .run-error { color: var(--danger); }
+.run-out .run-warn { color: #b7791f; }
+.summary-note { margin: 10px auto; max-width: 760px; padding: 10px 14px; border-radius: 12px; background: var(--bg-2); color: var(--text-2); font: 13px var(--font); }
+.summary-note pre { white-space: pre-wrap; margin: 8px 0 0; font: 13px/1.5 var(--font); }
+.pick-search select { min-width: 0; }
+@media (max-width: 900px) { .pick-search { display: none; } }
+
+.vm-overlay { position: fixed; inset: 0; z-index: 480; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 24px; background: var(--bg); text-align: center; }
+.vm-orb { width: 120px; height: 120px; border-radius: 50%; background: var(--accent); opacity: .9; transition: transform .3s; }
+.vm-overlay[data-state="listen"] .vm-orb { animation: vm-pulse 1.4s ease-in-out infinite; }
+.vm-overlay[data-state="think"] .vm-orb { opacity: .45; animation: vm-pulse 2.4s ease-in-out infinite; }
+.vm-overlay[data-state="speak"] .vm-orb { animation: vm-pulse .8s ease-in-out infinite; }
+@keyframes vm-pulse { 50% { transform: scale(1.14); } }
+.vm-state { margin: 0; font: 500 22px var(--head); }
+.vm-text { margin: 0; max-width: 560px; min-height: 3em; color: var(--text-2); font-size: 15px; line-height: 1.5; }
+#voice-btn.on { color: var(--accent); }
+
+.tpl-dialog { display: flex; flex-direction: column; gap: 8px; }
+.tpl-card { display: flex; align-items: stretch; gap: 4px; }
+.tpl-use { flex: 1; text-align: left; display: flex; flex-direction: column; gap: 2px; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg-1); color: var(--text); cursor: pointer; }
+.tpl-use:hover { border-color: var(--accent); }
+.tpl-use span { color: var(--text-3); font-size: 12.5px; }
+
+/* Obere Leiste: bei vielen Auswahlfeldern Beschriftungen ausblenden, damit nichts überläuft */
+.topbar-actions { flex-shrink: 1; min-width: 0; }
+.pick-role .pick-label, .pick-search .pick-label, .pick-style .pick-label { display: none; }
+.pick-role select, .pick-search select, .pick-style select { max-width: 128px; }
+@media (min-width: 1560px) { .pick-role .pick-label, .pick-search .pick-label, .pick-style .pick-label { display: inline; } }
+@media (max-width: 1100px) { .pick-style { display: none; } }

@@ -13,10 +13,13 @@ const BASE = 'Du bist AI Core, ein hilfreicher Assistent. Antworte standardmäß
 /** Systemprompt aus Rolle, Stil und eigenen Anweisungen; undefined = Server-Standard. */
 import { projectContext } from './projects.js';
 
-export function buildSystem(rolePrompt, settings, project = null) {
-  const style = STYLES.find(s => s.id === settings.style)?.hint || '';
+export function buildSystem(rolePrompt, settings, project = null, extra = {}) {
+  const style = STYLES.find(x => x.id === settings.style)?.hint || '';
   const own = String(settings.instructions || '').trim().slice(0, 1500);
-  const proj = projectContext(project);
-  if (!style && !own && !proj) return rolePrompt || undefined;
-  return [rolePrompt || BASE, style, own && `Anweisungen des Nutzers (immer beachten): ${own}`, proj].filter(Boolean).join('\n\n');
+  const summary = extra.summary ? `Zusammenfassung des früheren Gesprächs (die Nachrichten selbst sind nicht mehr da):\n${extra.summary}` : '';
+  const search = extra.search || '';
+  const budget = extra.budget || 12000;
+  const proj = projectContext(project, { query: extra.query, budget: Math.max(1000, budget - search.length - summary.length) });
+  if (!style && !own && !proj && !summary && !search) return rolePrompt || undefined;
+  return [rolePrompt || BASE, style, own && `Anweisungen des Nutzers (immer beachten): ${own}`, summary, search, proj].filter(Boolean).join('\n\n');
 }

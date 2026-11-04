@@ -40,6 +40,12 @@ function filesRow(attachments) {
     : `<span class="file-chip" ${a.text ? '' : 'title="Kein Text gelesen — die KI sieht nur den Dateinamen"'}>📄 <span class="fc-name">${escapeHtml(a.name)}</span>${a.text ? '' : '<span class="fc-warn">⚠</span>'}</span>`).join('')}</div>`;
 }
 
+const sourcesRow = (m) => {
+  const list = (m.sources || []).filter(s => /^https?:\/\//.test(s.url));
+  if (!list.length) return '';
+  const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } };
+  return `<div class="sources"><span>Quellen</span>${list.map(s => `<a href="${escapeHtml(s.url)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(s.title)}">[${s.n}] ${escapeHtml(host(s.url))}</a>`).join('')}</div>`;
+};
 const versionSwitch = (m) => {
   const n = m.versions?.length || 0;
   if (n < 2) return '';
@@ -82,18 +88,19 @@ export function renderMessageEl(message, h = {}) {
     ? renderMarkdown(message.content || '')
     : escapeHtml(message.content || ''));
   body.appendChild(content);
+  if (message.sources?.length) body.insertAdjacentHTML('beforeend', sourcesRow(message));
 
   // Klicks auf Code-Knöpfe: ein Listener, der auch beim Streamen (neuer innerHTML) erhalten bleibt
   content.addEventListener('click', (e) => {
-    const b = e.target.closest('[data-code-copy],[data-code-preview],[data-code-open],[data-code-download],[data-code-export]');
+    const b = e.target.closest('[data-code-copy],[data-code-preview],[data-code-open],[data-code-download],[data-code-export],[data-code-run]');
     if (!b) return;
     const block = b.closest('.code-block');
-    const type = ['copy', 'preview', 'open', 'download', 'export'].find(t => b.hasAttribute(`data-code-${t}`));
+    const type = ['copy', 'preview', 'open', 'download', 'export', 'run'].find(t => b.hasAttribute(`data-code-${t}`));
     h.onCode?.(type, { code: block.querySelector('code').textContent, lang: block.dataset.lang, file: block.dataset.file }, b, message);
   });
 
   if (message.notice === 'trimmed') {
-    body.insertAdjacentHTML('beforeend', '<div class="message-notice">Ältere Nachrichten wurden für das Modell gekürzt, damit der Kontext reicht.</div>');
+    body.insertAdjacentHTML('beforeend', '<div class="message-notice">Ältere Nachrichten wurden für das Modell gekürzt, damit der Kontext reicht. Mit /komprimieren fasst die KI den Anfang zusammen.</div>');
   }
 
   if (message.role === 'assistant') {

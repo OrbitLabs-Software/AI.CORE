@@ -58,6 +58,12 @@ Die Dateien entstehen im Browser (`src/js/xlsx.js`, `pptx.js`, `pdf.js`, `docx.j
 - **Bilder (`/bild ...`) und Videos (`/video ...`):** Der Tiny hat keine Grafikkarte. Trage in der `.env` einen Schlüssel eines Anbieters mit OpenAI-kompatibler Schnittstelle ein (`IMAGE_API_KEY`, `VIDEO_API_KEY`, siehe `.env.example`). Die Beschreibung geht dann ins Internet, und Videos dauern Minuten und kosten beim Anbieter Geld. Ohne Schlüssel bleibt beides aus.
 - **Projekte:** In der Seitenleiste unter „Projekte“. Dateien eines Projekts werden auf rund 12 000 Zeichen gekürzt, damit das lokale Modell noch Platz zum Antworten hat.
 
+## Websuche, Wissenssuche, Code ausführen
+
+- **Websuche:** Ohne Einstellung nutzt der Server DuckDuckGo und Wikipedia. Das geht ohne Konto, ist aber weniger zuverlässig, weil sich DuckDuckGo gegen Programme sperren kann. Besser ist ein Schlüssel von Brave Search (`BRAVE_API_KEY`, hat ein kostenloses Monatskontingent) oder eine eigene SearXNG-Instanz (`SEARXNG_URL`, JSON-Ausgabe muss in SearXNG erlaubt sein). Die Frage geht dabei an den Suchanbieter; die App fragt einmal pro Sitzung nach.
+- **Wissenssuche:** Das Modell sieht nie mehr als in sein Kontextfenster passt. Bei kleinen Modellen (4096 Token) sind das nur ein paar Absätze, deshalb sucht AI Core in großen Projektdateien die passenden Abschnitte heraus. Die Suche arbeitet nach Stichwörtern, nicht nach Bedeutung: Wer in der Frage andere Wörter benutzt als im Text, findet weniger.
+- **Code ausführen:** Nur JavaScript, in einem abgeschotteten Rahmen. Für Python gibt es das noch nicht.
+
 ## Videos, Kontingente und Pro
 
 **Video über Hugging Face:** `HF_TOKEN` in der `.env` eintragen (Token mit Berechtigung „Inference Providers“) und auf dem Server `npm install @huggingface/inference` ausführen. Welche Modelle gerade Videos können, zeigt `https://huggingface.co/api/models?inference_provider=all&pipeline_tag=text-to-video`; das Modell steht in `HF_VIDEO_MODEL`. Ein Video kostet Guthaben beim Anbieter. Das kleine Gratis-Guthaben eines Kontos gilt für den ganzen Server, nicht pro Nutzer, und reicht nur für wenige Clips. Setze deshalb `VIDEO_MAX_PER_MONTH_TOTAL` auf eine Zahl, die dein Budget verträgt.

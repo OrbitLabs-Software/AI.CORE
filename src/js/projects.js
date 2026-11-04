@@ -1,10 +1,11 @@
 // projects.js — Projekte wie bei Claude: eigene Anweisungen und Dateien, die in jedem Chat des Projekts gelten.
 import { storage } from './storage.js';
 import { api } from './api.js';
+import { retrieve } from './rag.js';
 import { uid, escapeHtml, showToast } from './ui.js';
 import { openModal } from '../components/modal.js';
 
-const MAX_FILES_CHARS = 12000;   // damit auch kleine lokale Modelle noch Platz zum Antworten haben
+const MAX_PROJECT_CHARS = 400000;   // pro Projekt (der Speicher im Browser ist begrenzt)
 
 export function createProjectStore() {
   let list = storage.getProjects();
@@ -21,16 +22,18 @@ export function createProjectStore() {
   };
 }
 
-/** Text für den Systemprompt: Anweisungen und (gekürzte) Dateien des Projekts. */
-export function projectContext(p) {
+/** Text für den Systemprompt: Anweisungen und Dateien. Passt alles in `budget`, kommt alles mit, sonst nur die Abschnitte zur Frage. */
+export function projectContext(p, { query = '', budget = 12000 } = {}) {
   if (!p) return '';
-  let left = MAX_FILES_CHARS;
-  const files = (p.files || []).map(f => {
-    if (left <= 0) return '';
-    const t = f.text.slice(0, left); left -= t.length;
-    return `### ${f.name}\n${t}${t.length < f.text.length ? '\n[gekürzt]' : ''}`;
-  }).filter(Boolean).join('\n\n');
-  return `Du arbeitest im Projekt „${p.name}“.${p.instructions ? ` Anweisungen des Projekts: ${p.instructions.slice(0, 3000)}` : ''}${files ? `\n\nDateien des Projekts:\n${files}` : ''}`;
+  const head = `Du arbeitest im Projekt „${p.name}“.${p.instructions ? ` Anweisungen des Projekts: ${p.instructions.slice(0, 3000)}` : ''}`;
+  const files = p.files || [];
+  if (!files.length) return head;
+  const room = Math.max(800, budget - head.length);
+  const total = files.reduce((n, f) => n + f.text.length, 0);
+  const body = total <= room
+    ? files.map(f => `### ${f.name}\n${f.text}`).join('\n\n')
+    : `[Auszüge, die zur Frage passen. Das Projekt ist größer als der Platz im Modell.]\n${retrieve(files, query, room)}`;
+  return `${head}\n\nDateien des Projekts:\n${body}`;
 }
 
 export function openProjectDialog({ project, chats, onNewChat, onOpenChat, onChange, onDelete }) {
@@ -42,7 +45,7 @@ export function openProjectDialog({ project, chats, onNewChat, onOpenChat, onCha
     root.innerHTML = `
       <label class="proj-field">Name<input class="text-input" data-f="name" maxlength="60" value="${escapeHtml(project.name)}"></label>
       <label class="proj-field">Anweisungen für dieses Projekt<textarea class="text-input" data-f="ins" rows="5" maxlength="3000" placeholder="z. B. „Wir schreiben an einer Bewerbung. Antworte förmlich.“">${escapeHtml(project.instructions || '')}</textarea></label>
-      <div class="proj-field">Dateien <small>(${project.files.length}) — werden in jedem Chat des Projekts mitgelesen</small>
+      <div class="proj-field">Dateien <small>(${project.files.length}) — große Dateien werden nach der Frage durchsucht</small>
         <ul class="proj-files">${project.files.map(f => `<li><span>${escapeHtml(f.name)}</span><button type="button" class="mini-btn" data-del="${f.id}" aria-label="Datei entfernen">✕</button></li>`).join('') || '<li class="empty">Noch keine Dateien</li>'}</ul>
         <input type="file" data-f="file" multiple hidden>
         <button type="button" class="btn" data-add>Datei hinzufügen</button></div>
@@ -58,7 +61,8 @@ export function openProjectDialog({ project, chats, onNewChat, onOpenChat, onCha
         try {
           const data = await api.upload(file);
           if (!data.extractedText) { showToast(`„${file.name}“: ${data.note || 'kein Text gefunden'}`); continue; }
-          project.files.push({ id: uid(), name: file.name, text: data.extractedText.slice(0, 30000) });
+          if (project.files.reduce((n, f) => n + f.text.length, 0) + data.extractedText.length > MAX_PROJECT_CHARS) { showToast('Das Projekt ist voll. Entferne zuerst eine Datei.'); break; }
+          project.files.push({ id: uid(), name: file.name, text: data.extractedText.slice(0, 60000) });
         } catch (err) { showToast(err.message || 'Datei konnte nicht gelesen werden'); }
       }
       onChange({ files: project.files }); draw();
