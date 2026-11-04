@@ -1,5 +1,16 @@
 # Änderungen
 
+## 3.4.2
+
+Standard-Serveradresse der GitHub-Seite ist jetzt die Tunnel-Adresse `https://obitlabs.tailc8dd2c.ts.net`. Man muss sie auf den Geräten nicht mehr eintragen.
+
+## 3.4.1
+
+**Von überall erreichbar**
+- Der Server erkennt jetzt die echte Adresse der Besucher hinter einem Tunnel auf demselben Rechner (`TRUST_PROXY=loopback` ist Standard). Ohne das hätten alle Besucher dieselbe Adresse und die Mengenbegrenzungen würden alle gemeinsam treffen.
+- Öffnet man die Seite über die Tunnel-Adresse, spricht sie den Server unter derselben Adresse an. Nur GitHub Pages braucht eine eigene Server-Adresse.
+- README: Anleitung für Tailscale Funnel (kostenlos, HTTPS, ohne Router-Einstellungen).
+
 ## 3.4.0
 
 **Mehr KI-Funktionen**

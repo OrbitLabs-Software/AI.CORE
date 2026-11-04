@@ -1181,7 +1181,7 @@ function confirmProReturn() {
     syncModelSelect();
     updateStatus();
     // Seite liegt außerhalb (GitHub): klare Meldung mit Adressfeld statt stillem Demo-Modus.
-    if (isCrossOrigin()) mountConnect({ error: e?.message || 'Der Server ist nicht erreichbar.', onConnected: applyConfig });
+    if (e?.network) mountConnect({ error: e?.message || 'Der Server ist nicht erreichbar.', onConnected: applyConfig });
   }
   setInterval(() => { if (!document.hidden && appConfig.authenticated) refreshHealth(); }, 30000);
 })();

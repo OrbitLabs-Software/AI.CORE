@@ -58,6 +58,19 @@ Die Dateien entstehen im Browser (`src/js/xlsx.js`, `pptx.js`, `pdf.js`, `docx.j
 - **Bilder (`/bild ...`) und Videos (`/video ...`):** Der Tiny hat keine Grafikkarte. Trage in der `.env` einen Schlüssel eines Anbieters mit OpenAI-kompatibler Schnittstelle ein (`IMAGE_API_KEY`, `VIDEO_API_KEY`, siehe `.env.example`). Die Beschreibung geht dann ins Internet, und Videos dauern Minuten und kosten beim Anbieter Geld. Ohne Schlüssel bleibt beides aus.
 - **Projekte:** In der Seitenleiste unter „Projekte“. Dateien eines Projekts werden auf rund 12 000 Zeichen gekürzt, damit das lokale Modell noch Platz zum Antworten hat.
 
+## Von überall erreichbar (Tailscale Funnel)
+
+Im Heimnetz geht alles über `http://192.168.1.190:3000`. Von unterwegs braucht der Tiny eine öffentliche HTTPS-Adresse. Am einfachsten geht das mit Tailscale Funnel: kostenlos, ohne Router-Einstellungen, mit echtem HTTPS-Zertifikat (damit funktionieren auch iPhone/Safari und die GitHub-Seite).
+
+1. Auf dem Tiny: `curl -fsSL https://tailscale.com/install.sh | sh`, danach `sudo tailscale up` und mit dem Link ein Tailscale-Konto anlegen oder anmelden.
+2. `sudo tailscale funnel --bg 3000` ausführen. Beim ersten Mal zeigt es einen Link, mit dem du HTTPS-Zertifikate und Funnel für dein Konto freigibst. Danach nennt es die Adresse, zum Beispiel `https://tiny.dein-tailnet.ts.net`. `--bg` hält sie auch nach einem Neustart aufrecht.
+3. Diese Adresse öffnest du von überall im Browser. Die Seite kommt dann direkt vom Tiny.
+4. Für Google-, GitHub- und Handy-Anmeldung die Adresse (ohne `https://`) in Firebase unter *Authentication → Einstellungen → Autorisierte Domains* eintragen. E-Mail und Passwort gehen ohne.
+5. Willst du auch die GitHub-Seite nutzen: In der `.env` `ALLOWED_ORIGINS=https://DEIN-NAME.github.io` setzen, den Dienst neu starten und im Anmeldefenster auf der GitHub-Seite unter „ändern“ die Tunnel-Adresse eintragen (einmal pro Gerät).
+6. Abschalten: `sudo tailscale funnel --https=443 3000 off`.
+
+**Sicherheit:** Funnel macht den Server für jeden im Internet erreichbar. Die Adresse ist nicht geheim. Schutz ist die Anmeldung. Prüfe in der `.env`, dass `ALLOW_ANY_FIREBASE_USER=false` steht und nur die gewünschten Konten in `ALLOWED_UIDS`, `ALLOWED_EMAILS` oder `ALLOWED_EMAIL_DOMAINS` eingetragen sind. Ohne Anmeldung (`Anmeldung: AUS` im Start-Log) darf der Server nie öffentlich sein. Halte Node.js und das System aktuell.
+
 ## Websuche, Wissenssuche, Code ausführen
 
 - **Websuche:** Ohne Einstellung nutzt der Server DuckDuckGo und Wikipedia. Das geht ohne Konto, ist aber weniger zuverlässig, weil sich DuckDuckGo gegen Programme sperren kann. Besser ist ein Schlüssel von Brave Search (`BRAVE_API_KEY`, hat ein kostenloses Monatskontingent) oder eine eigene SearXNG-Instanz (`SEARXNG_URL`, JSON-Ausgabe muss in SearXNG erlaubt sein). Die Frage geht dabei an den Suchanbieter; die App fragt einmal pro Sitzung nach.

@@ -328,7 +328,7 @@ export function mountConnect({ error = '', onConnected }) {
       <li>Läuft der Server? Auf dem Tiny: <code>sudo systemctl status ai-core</code></li>
       <li>Du musst im selben WLAN/Netzwerk sein wie der Server.</li>
       <li>Chrome und Edge fragen einmal nach dem Zugriff aufs lokale Netzwerk. Bitte <b>Zulassen</b>.</li>
-      <li>iPhone/Safari blockiert Heimnetz-Adressen von HTTPS-Seiten. Dann hier eine HTTPS-Adresse des Servers eintragen (z. B. über Tailscale).</li>
+      <li>Von unterwegs oder mit dem iPhone: hier die HTTPS-Adresse des Servers eintragen (zum Beispiel von Tailscale Funnel, siehe README).</li>
     </ul></details>`);
   const form = $('form');
   if (error) say(error);

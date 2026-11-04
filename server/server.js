@@ -1,3 +1,4 @@
+import { trustProxySetting } from './proxy.js';
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -19,7 +20,7 @@ const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0'; // im Heimnetz erreichbar
 
 app.disable('x-powered-by');
-app.set('trust proxy', process.env.TRUST_PROXY === 'true');
+app.set('trust proxy', trustProxySetting(process.env.TRUST_PROXY));
 app.use(securityHeaders);
 app.use(express.json({ limit: '12mb' }));
 app.use('/api', cors, sameOriginGuard, router);

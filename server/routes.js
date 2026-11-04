@@ -20,7 +20,7 @@ import { planStatus, reserve, refund, grantPro, revokePro, proInfo, redeemCode, 
 import { webSearch, searchEnabled } from './search.js';
 import { stripeEnabled, createCheckout, confirmCheckout, subscriptionState, createPortal } from './stripe.js';
 
-export const VERSION = '3.4.0';
+export const VERSION = '3.4.2';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024, files: 1 } });
 

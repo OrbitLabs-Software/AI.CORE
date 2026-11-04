@@ -2,7 +2,7 @@
 // Die Seite kann auf GitHub Pages liegen; der Server steht im Heimnetz. Ändere nur diese Zeile,
 // wenn sich die Adresse des Servers ändert (oder trage sie im Anmeldefenster unter „ändern“ ein).
 
-export const DEFAULT_SERVER = 'http://192.168.1.190:3000';
+export const DEFAULT_SERVER = 'https://obitlabs.tailc8dd2c.ts.net';   // Tailscale Funnel; im Heimnetz geht auch http://192.168.1.190:3000
 
 const KEY = 'aicore_server';
 const read = () => { try { return localStorage.getItem(KEY) || ''; } catch { return ''; } };
@@ -11,7 +11,8 @@ const PRIVATE_HOST = /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\
 export const isPrivateHost = (host = location.hostname) => PRIVATE_HOST.test(host);
 
 /** Kommt die Seite selbst vom AI-Core-Server (Heimnetz-Adresse oder Port 3000)? Dann gilt derselbe Ursprung. */
-const servedByServer = () => location.protocol !== 'file:' && (location.port === '3000' || isPrivateHost());
+// Nur GitHub Pages (und lokale Dateien) liegen außerhalb des Servers; jede andere Adresse, auch ein Tunnel, ist der Server selbst.
+const servedByServer = () => location.protocol !== 'file:' && !/\.github\.io$/i.test(location.hostname);
 
 /** Basisadresse ohne „/“ am Ende; leer = gleicher Ursprung. */
 export function serverBase() {
