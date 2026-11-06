@@ -6,7 +6,7 @@ import dotenv from 'dotenv';
 
 dotenv.config(); // vor den Modulen laden, die die Umgebung lesen
 
-const { router, VERSION } = await import('./routes.js');
+const { router, openaiRouter, VERSION } = await import('./routes.js');
 const { getConfig, warmUpModel, listOllamaModels } = await import('./ai.js');
 const { securityHeaders, sameOriginGuard, cors, authEnabled, passwordEnabled, requireAuth } = await import('./security.js');
 const { previewHandler } = await import('./preview.js');
@@ -24,12 +24,18 @@ app.set('trust proxy', trustProxySetting(process.env.TRUST_PROXY));
 app.use(securityHeaders);
 app.use(express.json({ limit: '12mb' }));
 app.use('/api', cors, sameOriginGuard, router);
+app.use('/v1', cors, openaiRouter);
 app.get('/preview/:id', requireAuth, previewHandler);
 
 // Nur das Frontend wird ausgeliefert — nicht server/, data/, .env oder package.json.
 app.get('/', (req, res) => res.sendFile(path.join(ROOT, 'index.html')));
 app.use('/src', express.static(path.join(ROOT, 'src'), { maxAge: '5m' }));
 app.use('/public', express.static(path.join(ROOT, 'public'), { maxAge: '1h' }));
+// App-Installation (PWA): Manifest, Symbole und Service Worker liegen im Wurzelverzeichnis der Seite.
+app.use(express.static(path.join(ROOT, 'pwa'), { maxAge: '1h', setHeaders: (res, file) => {
+  if (file.endsWith('sw.js')) res.setHeader('Cache-Control', 'no-cache');
+  if (file.endsWith('.webmanifest')) res.setHeader('Content-Type', 'application/manifest+json');
+} }));
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'Nicht gefunden' }));
 app.get('*', (req, res) => {

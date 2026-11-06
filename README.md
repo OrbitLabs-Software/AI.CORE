@@ -58,6 +58,20 @@ Die Dateien entstehen im Browser (`src/js/xlsx.js`, `pptx.js`, `pdf.js`, `docx.j
 - **Bilder (`/bild ...`) und Videos (`/video ...`):** Der Tiny hat keine Grafikkarte. Trage in der `.env` einen Schlüssel eines Anbieters mit OpenAI-kompatibler Schnittstelle ein (`IMAGE_API_KEY`, `VIDEO_API_KEY`, siehe `.env.example`). Die Beschreibung geht dann ins Internet, und Videos dauern Minuten und kosten beim Anbieter Geld. Ohne Schlüssel bleibt beides aus.
 - **Projekte:** In der Seitenleiste unter „Projekte“. Dateien eines Projekts werden auf rund 12 000 Zeichen gekürzt, damit das lokale Modell noch Platz zum Antworten hat.
 
+## API für andere Programme (OpenAI-kompatibel)
+
+Mit `API_KEYS` in der `.env` bekommen andere Programme Zugriff auf dein Modell, ohne dass sie sich bei AI Core anmelden müssen.
+
+1. Einen langen Schlüssel erzeugen: `openssl rand -hex 24`
+2. In die `.env`: `API_KEYS=vscode:DER_SCHLUESSEL` (mehrere mit Komma), Dienst neu starten.
+3. Im Programm als Basisadresse `https://DEINE-ADRESSE/v1` und den Schlüssel eintragen. Der Modellname ist egal, `default` nimmt das Standardmodell. Die Liste der Modelle steht unter `/v1/models`.
+
+Unterstützt: Chat, Streaming, Bilder (als eingebettete Daten). Nicht unterstützt: Werkzeugaufrufe (`tools`); Anfragen damit werden mit einer klaren Meldung abgelehnt. Erinnerungen der Konten werden über die API nie mitgeschickt. Wer den Schlüssel hat, kann dein Modell nutzen, behandle ihn wie ein Passwort.
+
+## Server-Übersicht und Zähler
+
+Besitzer sehen unter Einstellungen → Server den Zustand des Servers. Besitzer ist, wer in `OWNER_UIDS` steht, sonst wer in `ALLOWED_UIDS` steht. Die Zähler (`data/metrics.json`) enthalten nur Zahlen pro Tag und gekürzte Konto-Kennungen, keine Inhalte, und werden nach 60 Tagen gelöscht.
+
 ## Von überall erreichbar (Tailscale Funnel)
 
 Im Heimnetz geht alles über `http://192.168.1.190:3000`. Von unterwegs braucht der Tiny eine öffentliche HTTPS-Adresse. Am einfachsten geht das mit Tailscale Funnel: kostenlos, ohne Router-Einstellungen, mit echtem HTTPS-Zertifikat (damit funktionieren auch iPhone/Safari und die GitHub-Seite).

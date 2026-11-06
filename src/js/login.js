@@ -151,7 +151,7 @@ function shell(inner) {
  * Anmelde-Overlay. onSuccess({user}) wird nach erfolgreicher Anmeldung aufgerufen.
  * @param {{password: boolean, firebase: object|null}} methods  aus /api/config
  */
-export function mountLogin({ methods, onSuccess }) {
+export function mountLogin({ methods, onSuccess, legal = {} }) {
   const fb = methods.firebase;
   const list = fb?.providers || [];
   const hasEmail = list.includes('password');
@@ -200,7 +200,8 @@ export function mountLogin({ methods, onSuccess }) {
       <label>Zugangspasswort<input class="text-input" type="password" name="secret" autocomplete="current-password" placeholder="Zugangspasswort"></label>
       <button class="btn primary block" type="submit"><b>Anmelden</b></button>
     </form>
-    ${both ? '<button type="button" class="link-btn lg-switch" data-action="switch">Mit Zugangspasswort anmelden</button>' : ''}`);
+    ${both ? '<button type="button" class="link-btn lg-switch" data-action="switch">Mit Zugangspasswort anmelden</button>' : ''}
+    ${[['imprint', 'Impressum'], ['privacy', 'Datenschutz'], ['terms', 'AGB']].filter(([k]) => legal[k]).length ? `<p class="lg-legal">${[['imprint', 'Impressum'], ['privacy', 'Datenschutz'], ['terms', 'AGB']].filter(([k]) => legal[k]).map(([k, t]) => `<a href="${esc(legal[k])}" target="_blank" rel="noopener noreferrer">${t}</a>`).join(' · ')}</p>` : ''}`);
 
   async function run(task, btn) {
     say('');

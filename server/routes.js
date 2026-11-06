@@ -1,4 +1,6 @@
 import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import { Router } from 'express';
 import multer from 'multer';
 import {
@@ -9,7 +11,7 @@ import { buildContext } from './context.js';
 import { processUploadedFile } from './fileProcessor.js';
 import {
   requireAuth, rateLimit, loginLimiter, loginHandler, firebaseLoginHandler, logoutHandler, authInfo, sessionFromRequest,
-  authEnabled, originAllowed,
+  authEnabled, originAllowed, isAuthenticated,
 } from './security.js';
 import { keyFor, listMemories, addMemory, deleteMemory, clearMemories, memoryPrompt, memoryEnabled, MAX_ITEMS } from './memory.js';
 import { createPreview } from './preview.js';
@@ -18,9 +20,12 @@ import { generateImage, imageEnabled } from './image.js';
 import { startVideo, videoStatus, videoFile, videoEnabled } from './video.js';
 import { planStatus, reserve, refund, grantPro, revokePro, proInfo, redeemCode, codesEnabled } from './plan.js';
 import { webSearch, searchEnabled } from './search.js';
+import { isOwnerSession } from './owner.js';
+import { record, snapshot } from './metrics.js';
+import { parseApiKeys, checkApiKey, errorBody, toInternal, createThinkFilter, completionId, chunk, completion, modelList, estimateTokens } from './openai.js';
 import { stripeEnabled, createCheckout, confirmCheckout, subscriptionState, createPortal } from './stripe.js';
 
-export const VERSION = '3.4.2';
+export const VERSION = '3.5.0';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024, files: 1 } });
 
@@ -42,9 +47,20 @@ let pulling = false;
 export const router = Router();
 
 // ---------- Öffentlich ----------
+const apiKeys = () => parseApiKeys(process.env.API_KEYS);
+/** Nur http(s)-Adressen für Impressum, Datenschutz und AGB. */
+const legalLinks = () => Object.fromEntries([['imprint', 'LEGAL_IMPRINT_URL'], ['privacy', 'LEGAL_PRIVACY_URL'], ['terms', 'LEGAL_TERMS_URL']]
+  .map(([k, e]) => [k, /^https?:\/\/[^\s]+$/.test(process.env[e] || '') ? process.env[e] : '']).filter(([, v]) => v));
+const isOwner = (req) => !authEnabled() || isOwnerSession(sessionFromRequest(req));
+
 router.get('/config', (req, res) => {
   const cfg = getConfig();
-  res.json({ version: VERSION, provider: cfg.provider, features: { search: searchEnabled(), image: imageEnabled(), video: videoEnabled(), share: shareEnabled(), pro: stripeEnabled() || codesEnabled() }, ...authInfo(req) });
+  res.json({
+    version: VERSION, provider: cfg.provider,
+    features: { search: searchEnabled(), image: imageEnabled(), video: videoEnabled(), share: shareEnabled(), pro: stripeEnabled() || codesEnabled(), api: apiKeys().length > 0 },
+    legal: legalLinks(), owner: isAuthenticated(req) && isOwner(req),
+    ...authInfo(req),
+  });
 });
 // Geteilte Chats lesen: ohne Anmeldung (der Link ist das Geheimnis).
 router.get('/share/:id', lightLimiter, (req, res) => {
@@ -167,6 +183,7 @@ router.delete('/share/:id', lightLimiter, (req, res) => {
 const searchLimiter = rateLimit({ windowMs: 60 * 1000, max: 15, message: 'Zu viele Suchen. Bitte kurz warten.' });
 router.post('/search', searchLimiter, async (req, res) => {
   if (!searchEnabled()) return res.status(403).json({ error: 'Die Websuche ist abgeschaltet.' });
+  record('search', memKey(req));
   try { res.json(await webSearch(req.body?.query, { deep: req.body?.deep === true })); }
   catch (e) { res.status(502).json({ error: e.message }); }
 });
@@ -174,8 +191,7 @@ router.post('/search', searchLimiter, async (req, res) => {
 // ---------- Konto, Tarif, Kontingent ----------
 const accountOf = (req) => {
   const s = sessionFromRequest(req);
-  const owners = String(process.env.OWNER_UIDS || '').split(',').map(v => v.trim().toLowerCase()).filter(Boolean);
-  return { key: keyFor(s), session: s, unlimited: !authEnabled() || (s?.sub && owners.includes(String(s.sub).toLowerCase())) };
+  return { key: keyFor(s), session: s, unlimited: !authEnabled() || isOwnerSession(s) };
 };
 
 /** Stripe-Abo bei Ablauf der Periode erneut prüfen (kein Webhook nötig); höchstens alle 10 Minuten. */
@@ -204,6 +220,7 @@ router.post('/image', imageLimiter, async (req, res) => {
   const ac = new AbortController();
   res.on('close', () => ac.abort());
   try {
+    record('image', memKey(req));
     const { b64, mime } = await generateImage(prompt, ac.signal);
     res.json({ image: `data:${mime};base64,${b64}` });
   } catch (e) {
@@ -221,6 +238,7 @@ router.post('/video', videoLimiter, async (req, res) => {
   const acct = accountOf(req);
   const q = reserve(acct.key, 'video', acct);
   if (!q.ok) return res.status(q.status).json({ error: q.error });
+  record('video', memKey(req));
   try { res.status(202).json({ id: await startVideo(prompt, { onFail: () => refund(acct.key, 'video') }) }); }
   catch (e) { refund(acct.key, 'video'); console.warn('[video]', e.message); res.status(502).json({ error: e.message }); }
 });
@@ -338,6 +356,7 @@ router.post('/chat/stream', chatLimiter, async (req, res) => {
   const ping = setInterval(() => { if (!res.writableEnded) res.write(': ping\n\n'); }, 15000);
 
   activeChats += 1;
+  record('chat', memKey(req));
   try {
     if (ctx.trimmed) send({ notice: 'trimmed', dropped: ctx.dropped });
     if (usedMemory) send({ notice: 'memory' });
@@ -346,9 +365,10 @@ router.post('/chat/stream', chatLimiter, async (req, res) => {
       { messages: ctx.messages, model: requested, system, temperature },
       (delta, meta) => send({ delta, demo: meta?.demo || false }),
       ac.signal,
-      (meta) => send({ meta }),
+      (meta) => { send({ meta }); if (meta?.tokens) record('tokens', '', meta.tokens); },
     );
   } catch (e) {
+    record('errors');
     console.error('stream error', e);
   } finally {
     clearInterval(ping);
@@ -359,3 +379,108 @@ router.post('/chat/stream', chatLimiter, async (req, res) => {
     }
   }
 });
+
+// ---------- Server-Übersicht (nur Besitzer) ----------
+function dirStats(dir, depth = 0) {
+  let files = 0, bytes = 0;
+  try {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory() && depth < 2) { const r = dirStats(p, depth + 1); files += r.files; bytes += r.bytes; }
+      else if (e.isFile()) { files += 1; bytes += fs.statSync(p).size; }
+    }
+  } catch { /* Ordner fehlt */ }
+  return { files, bytes };
+}
+
+router.get('/admin/status', lightLimiter, async (req, res) => {
+  if (!isOwner(req)) return res.status(403).json({ error: 'Nur für den Besitzer.' });
+  const dataDir = process.env.AICORE_DATA_DIR || path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', 'data');
+  const mb = (n) => Math.round(n / 1048576);
+  res.json({
+    version: VERSION, node: process.version, platform: `${os.type()} ${os.release()}`,
+    uptimeSec: Math.round(process.uptime()),
+    memory: { processMB: mb(process.memoryUsage().rss), freeMB: mb(os.freemem()), totalMB: mb(os.totalmem()) },
+    load: os.loadavg().map(n => Math.round(n * 100) / 100), cpus: os.cpus().length,
+    data: { all: dirStats(dataDir), shares: dirStats(path.join(dataDir, 'shares')), videos: dirStats(path.join(dataDir, 'videos')) },
+    auth: authEnabled() ? 'an' : 'AUS',
+    features: { search: searchEnabled(), image: imageEnabled(), video: videoEnabled(), share: shareEnabled(), stripe: stripeEnabled(), codes: codesEnabled(), apiKeys: apiKeys().length },
+    searchProvider: process.env.BRAVE_API_KEY ? 'Brave' : process.env.SEARXNG_URL ? 'SearXNG' : 'DuckDuckGo/Wikipedia',
+    trustProxy: String(process.env.TRUST_PROXY || 'loopback'),
+    activeChats, metrics: snapshot(14),
+  });
+});
+
+// ---------- OpenAI-kompatible Schnittstelle (/v1) für andere Programme ----------
+// Schlüssel in der .env: API_KEYS=name:schluessel (mindestens 16 Zeichen). Ohne Schlüssel ist /v1 aus.
+export const openaiRouter = Router();
+const apiLimiter = rateLimit({ windowMs: 60 * 1000, max: Number(process.env.API_RATE_PER_MINUTE) || 30, message: 'Zu viele Anfragen. Bitte kurz warten.', keyFn: (req) => req.apiKeyName || req.ip });
+
+openaiRouter.use((req, res, next) => {
+  const keys = apiKeys();
+  if (!keys.length) return res.status(404).json(errorBody('Die API ist nicht eingerichtet (API_KEYS in der .env).', 'not_found'));
+  const name = checkApiKey(req.headers.authorization, keys);
+  if (!name) return res.status(401).json(errorBody('Ungültiger oder fehlender API-Schlüssel.', 'authentication_error', 'invalid_api_key'));
+  req.apiKeyName = name;
+  next();
+});
+openaiRouter.use(apiLimiter);
+
+openaiRouter.get('/models', async (req, res) => {
+  const { models } = await listAllModels(getConfig());
+  res.json(modelList(models.map(m => m.id)));
+});
+
+openaiRouter.post('/chat/completions', async (req, res) => {
+  const r = toInternal(req.body);
+  if (r.error) return res.status(400).json(errorBody(r.error));
+  if (activeChats >= MAX_CONCURRENT) return res.status(429).json(errorBody('Der Server bearbeitet gerade andere Anfragen. Bitte gleich erneut senden.', 'rate_limit_error'));
+
+  const cfg = getConfig();
+  const system = r.system || cfg.systemPrompt;   // Erinnerungen der Konten werden hier bewusst nie mitgeschickt
+  const target = resolveModel(r.model, cfg);
+  const ctx = buildContext({ messages: r.messages, budgetTokens: contextBudget(cfg, system, target.provider), model: target.model });
+  const id = completionId(), created = Math.floor(Date.now() / 1000), modelId = r.model || `${target.provider}/${target.model}`;
+  const keep = process.env.API_KEEP_THINK === 'true';
+  const filter = createThinkFilter();
+  const ac = new AbortController();
+  res.on('close', () => ac.abort());
+  const promptTokens = estimateTokens(system) + ctx.messages.reduce((n, m) => n + estimateTokens(m.content), 0);
+  let out = '', demo = false;
+  const usage = () => ({ prompt_tokens: promptTokens, completion_tokens: estimateTokens(out), total_tokens: promptTokens + estimateTokens(out) });
+
+  activeChats += 1;
+  record('api', req.apiKeyName);
+  if (r.stream) {
+    res.setHeader('Content-Type', 'text/event-stream'); res.setHeader('Cache-Control', 'no-cache'); res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders?.();
+    const send = (o) => { if (!res.writableEnded) res.write(`data: ${JSON.stringify(o)}\n\n`); };
+    send(chunk({ id, created, model: modelId, role: 'assistant', content: '' }));
+    try {
+      await streamAiResponse({ messages: ctx.messages, model: r.model, system, temperature: r.temperature }, (delta, meta) => {
+        if (meta?.demo) { demo = true; return; }   // Demo-Text ist keine echte Antwort
+        const text = keep ? delta : filter.push(delta);
+        if (text) { out += text; send(chunk({ id, created, model: modelId, content: text })); }
+      }, ac.signal);
+      const tail = keep ? '' : filter.end();
+      if (tail) { out += tail; send(chunk({ id, created, model: modelId, content: tail })); }
+      if (demo) send(errorBody('Das Modell ist nicht erreichbar.', 'server_error'));
+      send(chunk({ id, created, model: modelId, finish: 'stop' }));
+      if (r.includeUsage) send({ ...chunk({ id, created, model: modelId }), choices: [], usage: usage() });
+    } catch (e) { record('errors'); console.error('[api] stream', e.message); send(errorBody('Interner Fehler', 'server_error')); }
+    finally { activeChats -= 1; record('apiTokens', '', estimateTokens(out)); if (!res.writableEnded) { res.write('data: [DONE]\n\n'); res.end(); } }
+    return;
+  }
+  try {
+    await streamAiResponse({ messages: ctx.messages, model: r.model, system, temperature: r.temperature }, (delta, meta) => {
+      if (meta?.demo) { demo = true; return; }   // Demo-Text ist keine echte Antwort
+      out += keep ? delta : filter.push(delta);
+    }, ac.signal);
+    if (!keep) out += filter.end();
+    if (demo) return res.status(503).json(errorBody('Das Modell ist nicht erreichbar.', 'server_error'));
+    res.json(completion({ id, created, model: modelId, text: out.trim(), usage: usage() }));
+  } catch (e) { record('errors'); console.error('[api]', e.message); if (!res.headersSent) res.status(500).json(errorBody('Interner Fehler', 'server_error')); }
+  finally { activeChats -= 1; record('apiTokens', '', estimateTokens(out)); }
+});
+
+openaiRouter.use((req, res) => res.status(404).json(errorBody('Unbekannte Adresse.', 'not_found')));

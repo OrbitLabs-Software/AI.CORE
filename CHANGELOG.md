@@ -1,5 +1,23 @@
 # Änderungen
 
+## 3.5.0 — professionell
+
+**Neue Funktionen**
+- **Gesprächszweige:** Bearbeitest du eine frühere Nachricht, bleibt der alte Verlauf als Zweig erhalten. Mit ‹ 1/2 › wechselst du zwischen den Zweigen. Vorher ging der alte Verlauf beim Bearbeiten verloren, auch wenn man abbrach.
+- **OpenAI-kompatible Schnittstelle** (`/v1/chat/completions`, `/v1/models`): Andere Programme (VS Code mit Continue, Skripte, andere Chat-Oberflächen) können dein Modell nutzen. Eigene API-Schlüssel (`API_KEYS`), Mengenbegrenzung pro Schlüssel, Streaming, Bilder, Gedankengänge werden herausgefiltert.
+- **Server-Übersicht** (nur Besitzer, Einstellungen → Server): Version, Laufzeit, Speicher, Last, Datenmengen, aktive Funktionen, Nutzung der letzten 14 Tage, Hinweis bei abgeschalteter Anmeldung. Dazu zählt der Server Chats, Tokens, Suchen, Bilder, Videos und API-Aufrufe pro Tag (nur Zahlen, keine Inhalte).
+- **Nutzung** (Einstellungen → Nutzung): Chats, Fragen, Tokens, Geschwindigkeit, Fragen pro Tag und Modelle aus deinen Chats.
+- **Befehlspalette** (Strg+/): Aktionen, Einstellungen und Chats per Tastatur.
+- **Auswahl-Leiste:** Text in einer Antwort markieren, dann Erklären, Kürzer, Englisch oder Zitieren.
+- **Als App installieren:** Manifest, Symbole und Offline-Hülle; `/installieren`. Offline-Hinweis oben, wenn die Verbindung fehlt.
+- **Darstellung:** Design hell/dunkel/System, Textgröße, Dichte, Breite des Chats.
+- **Komplette Sicherung:** Chats, Projekte und Einstellungen in einer Datei (Schlüssel bleiben draußen).
+- **Rechtliches:** Links zu Impressum, Datenschutz und AGB (`LEGAL_*_URL`) im Anmeldefenster, bei Pro und unter „Über“.
+
+**Behoben**
+- `resolveModel` lief endlos im Kreis, wenn keine Modellquelle eingerichtet war.
+- Das Tab-Menü der Einstellungen passt bei vielen Reitern besser.
+
 ## 3.4.2
 
 Standard-Serveradresse der GitHub-Seite ist jetzt die Tunnel-Adresse `https://obitlabs.tailc8dd2c.ts.net`. Man muss sie auf den Geräten nicht mehr eintragen.

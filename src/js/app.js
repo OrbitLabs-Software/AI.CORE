@@ -22,6 +22,9 @@ import { bundleHtml } from './bundle.js';
 import { shareIdFromHash, showShared } from './sharedView.js';
 import { buildSearchContext } from './websearch.js';
 import { runJs } from './runner.js';
+import { takeBranch, applyBranch, switchBranch } from './branches.js';
+import { applyAppearance, watchSystemTheme, resolveTheme } from './appearance.js';
+import { openPalette } from './palette.js';
 import { openTemplateDialog, insertTemplate } from './templates.js';
 
 // ---------- DOM ----------
@@ -40,7 +43,8 @@ const searchInput = $('chat-search');
 
 // ---------- Zustand ----------
 const settings = storage.getSettings();
-document.documentElement.setAttribute('data-theme', settings.theme);
+applyAppearance(settings);
+watchSystemTheme(() => settings);
 
 const store = createChatStore();
 let abortController = null;
@@ -192,6 +196,7 @@ function messageHandlers(chat) {
     onCopy: (m) => { navigator.clipboard?.writeText(m.content); showToast('Nachricht kopiert'); },
     onRegenerate: (m) => regenerate(chat.id, m),
     onEdit: (m) => editMessage(chat.id, m),
+    onBranch: (m, d) => { if (busy) return showToast('Bitte warten, die KI antwortet gerade.'); if (switchBranch(chat, m.id, d)) { store.save(); renderMessages({ keepScroll: true }); } },
     onSpeak: speak,
     onFeedback: (m, v) => { m.feedback = m.feedback === v ? null : v; store.save(); renderMessages({ keepScroll: true }); },
     onZip: downloadZip,
@@ -370,7 +375,10 @@ async function sendMessage(text) {
     else if (settings.memoryHints) memoryHint = suggestMemory(text);
   }
 
-  store.addMessage(chat.id, { id: uid(), role: 'user', content: text, attachments, memoryHint, createdAt: Date.now() });
+  const userMsg = { id: uid(), role: 'user', content: text, attachments, memoryHint, createdAt: Date.now() };
+  if (editing?.chatId === chat.id) applyBranch(userMsg, takeBranch(chat, editing.id));
+  editing = null; showEditBanner();
+  store.addMessage(chat.id, userMsg);
   fileManager.clear();
   renderSidebar();
   renderMessages();
@@ -505,12 +513,26 @@ async function regenerate(chatId, message) {
   await runAssistantTurn(chatId, carry);
 }
 
+// Bearbeiten: Der alte Verlauf bleibt als Zweig erhalten (‹ 1/2 ›); erst beim Senden entsteht der neue Zweig.
+let editing = null;
 function editMessage(chatId, message) {
   if (busy) return showToast('Bitte warten — oder mit Esc die Antwort stoppen');
-  store.truncateFrom(chatId, message.id);
-  renderMessages();
+  editing = { chatId, id: message.id };
   composer.setValue(message.content);
+  composerInput.focus();
+  showEditBanner();
 }
+function showEditBanner() {
+  document.querySelector('.edit-banner')?.remove();
+  if (!editing) return;
+  const bar = document.createElement('div');
+  bar.className = 'edit-banner';
+  bar.innerHTML = '<span>Du bearbeitest eine frühere Nachricht. Der bisherige Verlauf bleibt als Zweig erhalten.</span><button type="button" class="link-btn">Abbrechen</button>';
+  bar.querySelector('button').addEventListener('click', cancelEdit);
+  $('composer-form').before(bar);
+}
+function cancelEdit() { if (!editing) return; editing = null; showEditBanner(); composer.setValue(''); }
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && editing && !busy) cancelEdit(); });
 
 // ---------- Code: Vorschau, Download, ZIP ----------
 /** HTML mit zugehörigen CSS/JS-Blöcken derselben Antwort zu einer Vorschau-Seite bündeln. */
@@ -693,6 +715,80 @@ async function compressChat() {
     showToast(`${old.length} ältere Nachrichten zusammengefasst`);
   } catch (e) { if (e.name !== 'AbortError') showToast(e.message || 'Zusammenfassen hat nicht geklappt'); }
   finally { busy = false; composer.setBusy(false); typingIndicator.hidden = true; renderSidebar(); renderMessages(); }
+}
+
+// ---------- Befehlspalette ----------
+function openCommandPalette() {
+  const actions = [
+    { label: 'Neuer Chat', hint: 'Strg+Umschalt+O', run: () => newChat() },
+    { label: 'Vorlagen', hint: '/vorlage', run: openTemplates },
+    { label: 'Neues Projekt', hint: 'Projekte', run: () => $('new-project-btn').click() },
+    { label: 'Sprachmodus', hint: '/sprache', run: () => startVoice() },
+    { label: 'Chat teilen', hint: '/teilen', run: shareCurrent },
+    { label: 'Verlauf komprimieren', hint: '/komprimieren', run: compressChat },
+    { label: 'Design wechseln (hell/dunkel)', hint: '', run: () => $('theme-toggle').click() },
+    { label: 'Einstellungen', hint: '', run: () => openSettings('general') },
+    { label: 'Nutzung ansehen', hint: 'Einstellungen', run: () => openSettings('stats') },
+    { label: 'AI Core Pro', hint: 'Einstellungen', run: () => openSettings('pro') },
+    ...(appConfig.owner ? [{ label: 'Server-Übersicht', hint: 'Einstellungen', run: () => openSettings('server') }] : []),
+    { label: 'Tastenkürzel und Hilfe', hint: '?', run: () => openSettings('about') },
+    { label: 'App installieren', hint: '/installieren', run: installApp },
+  ];
+  openPalette((q) => {
+    const hit = (t) => !q || t.toLowerCase().includes(q);
+    const chats = store.all().filter(c => q && hit(c.title)).slice(0, 6).map(c => ({ label: c.title, hint: 'Chat öffnen', run: () => selectChat(c.id) }));
+    return [...actions.filter(a => hit(a.label) || hit(a.hint)), ...chats];
+  });
+}
+document.addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && e.key === '/') { e.preventDefault(); openCommandPalette(); } });
+
+// ---------- App installieren, Offline-Hinweis ----------
+let installEvent = null;
+window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvent = e; });
+async function installApp() {
+  if (installEvent) { installEvent.prompt(); installEvent = null; return; }
+  showToast(/iPhone|iPad/.test(navigator.userAgent) ? 'Safari: Teilen-Symbol → „Zum Home-Bildschirm“.' : 'Browser-Menü → „App installieren“ (nur über https, zum Beispiel die Tunnel- oder GitHub-Adresse).');
+}
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+  navigator.serviceWorker.register('./sw.js').catch(() => { /* ohne Offline-Hülle weiterarbeiten */ });
+}
+const netBanner = document.createElement('div');
+netBanner.className = 'net-banner'; netBanner.hidden = true; netBanner.textContent = 'Keine Internetverbindung. Nachrichten können gerade nicht gesendet werden.';
+document.body.appendChild(netBanner);
+const syncNet = () => { netBanner.hidden = navigator.onLine; };
+window.addEventListener('online', () => { syncNet(); refreshHealth?.(); });
+window.addEventListener('offline', syncNet);
+syncNet();
+
+// ---------- Auswahl-Leiste: markierten Text erklären, kürzen, übersetzen, zitieren ----------
+if (!window.matchMedia?.('(pointer: coarse)').matches) {
+  const bar = document.createElement('div');
+  bar.className = 'sel-bar'; bar.hidden = true;
+  bar.innerHTML = ['explain:Erklären', 'short:Kürzer', 'translate:Englisch', 'quote:Zitieren'].map(s => { const [k, t] = s.split(':'); return `<button type="button" data-k="${k}">${t}</button>`; }).join('');
+  document.body.appendChild(bar);
+  let picked = '';
+  const hide = () => { bar.hidden = true; };
+  document.addEventListener('selectionchange', () => {
+    const sel = getSelection();
+    const text = sel?.toString().trim() || '';
+    const node = sel?.anchorNode;
+    const host = (node?.nodeType === 1 ? node : node?.parentElement)?.closest('.message.assistant .message-content');
+    if (!host || text.length < 3 || text.length > 900 || busy || !(host.contains(sel.focusNode) || host === sel.focusNode)) return hide();
+    picked = text;
+    const r = sel.getRangeAt(0).getBoundingClientRect();
+    bar.hidden = false;
+    bar.style.top = `${Math.max(8, r.top - 44)}px`;
+    bar.style.left = `${Math.min(innerWidth - bar.offsetWidth - 8, Math.max(8, r.left + r.width / 2 - bar.offsetWidth / 2))}px`;
+  });
+  bar.addEventListener('mousedown', (e) => e.preventDefault());
+  bar.addEventListener('click', (e) => {
+    const k = e.target.closest('button')?.dataset.k;
+    if (!k || !picked) return;
+    const t = picked; hide(); getSelection().removeAllRanges();
+    if (k === 'quote') { composer.setValue(`> ${t.replace(/\n/g, '\n> ')}\n\n`); composerInput.focus(); return; }
+    sendMessage({ explain: `Erkläre genauer: „${t}“`, short: `Sage das kürzer und einfacher: „${t}“`, translate: `Übersetze ins Englische: „${t}“` }[k]);
+  });
+  window.addEventListener('scroll', hide, true);
 }
 
 // ---------- Vorlagen ----------
@@ -896,6 +992,8 @@ function importShared(data) {
 $('share-btn').addEventListener('click', shareCurrent);
 
 const COMMANDS = [
+  { name: 'installieren', hint: 'AI Core als App auf dem Gerät installieren', run: installApp },
+  { name: 'palette', hint: 'Befehlspalette öffnen (Strg+/)', run: () => openCommandPalette() },
   { name: 'vorlage', hint: 'Vorlagen für häufige Aufgaben', run: openTemplates },
   { name: 'komprimieren', hint: 'Älteren Verlauf zusammenfassen, damit der Chat weiterläuft', run: compressChat },
   { name: 'sprache', hint: 'Sprachmodus: sprechen und zuhören', run: () => startVoice() },
@@ -981,6 +1079,7 @@ function showLogin() {
   loginShown = true;
   mountLogin({
     methods: appConfig.methods || { password: true, firebase: null },
+    legal: appConfig.legal || {},
     onSuccess: ({ user }) => {
       loginShown = false;
       appConfig.authenticated = true;
@@ -1013,7 +1112,8 @@ function openSettings(tab) {
     store, initialTab: tab,
     authRequired: appConfig.authRequired,
     user: appConfig.user,
-    onThemeChange: (theme) => document.documentElement.setAttribute('data-theme', theme),
+    owner: Boolean(appConfig.owner), legal: appConfig.legal || {},
+    onThemeChange: () => { Object.assign(settings, storage.getSettings()); applyAppearance(settings); },
     onRolesChange: () => { Object.assign(settings, storage.getSettings()); renderRoleSelect(); renderMessages({ keepScroll: true }); },
     onSettingsChange: () => { Object.assign(settings, storage.getSettings()); updateUserLabel(); },
     onModelsChange: () => { modelSelect.dataset.sig = ''; refreshHealth(); },
@@ -1063,9 +1163,8 @@ searchInput.addEventListener('input', renderSidebar);
 titleEl.addEventListener('dblclick', startRename);
 
 $('theme-toggle').addEventListener('click', () => {
-  const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-  document.documentElement.setAttribute('data-theme', next);
-  settings.theme = next;
+  settings.theme = resolveTheme(settings.theme) === 'dark' ? 'light' : 'dark';
+  applyAppearance(settings);
   storage.saveSettings(settings);
 });
 

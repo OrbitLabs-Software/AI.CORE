@@ -1,3 +1,4 @@
+import { branchInfo } from '../js/branches.js';
 import { renderMarkdown, escapeHtml, extractCodeBlocks } from '../js/ui.js';
 import { messageExports } from '../js/formatsMeta.js';
 
@@ -142,8 +143,15 @@ export function renderMessageEl(message, h = {}) {
     if (h.onEdit) {
       const actions = document.createElement('div');
       actions.className = 'message-actions';
-      actions.innerHTML = btn('edit', I.edit, 'Bearbeiten', 'Nachricht bearbeiten und neu senden');
-      actions.addEventListener('click', () => h.onEdit(message));
+      const bi = branchInfo(message);
+      actions.innerHTML = btn('edit', I.edit, 'Bearbeiten', 'Nachricht bearbeiten und neu senden') + (bi
+        ? `<span class="vsw"><button type="button" data-act="bprev" aria-label="Vorheriger Zweig" ${bi.index <= 1 ? 'disabled' : ''}>‹</button><span>${bi.index}/${bi.total}</span><button type="button" data-act="bnext" aria-label="Nächster Zweig" ${bi.index >= bi.total ? 'disabled' : ''}>›</button></span>` : '');
+      actions.addEventListener('click', (e) => {
+        const act = e.target.closest('[data-act]')?.dataset.act;
+        if (act === 'edit') h.onEdit(message);
+        else if (act === 'bprev') h.onBranch?.(message, -1);
+        else if (act === 'bnext') h.onBranch?.(message, 1);
+      });
       body.appendChild(actions);
     }
     if (message.memoryHint) {

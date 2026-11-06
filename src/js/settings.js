@@ -1,9 +1,10 @@
 import { openModal, settingsRow, switchControl } from '../components/modal.js';
 import { storage } from './storage.js';
 import { showToast, escapeHtml, formatBytes } from './ui.js';
+import { serverBase } from './config.js';
 import { api, ApiError } from './api.js';
 import { allRoles, BUILTIN_ROLES } from './roles.js';
-import { exportAllJSON, parseImport } from './exporter.js';
+import { exportAllJSON, exportBackupJSON, parseImport, parseBackup } from './exporter.js';
 
 const el = (tag, props = {}, html = '') => {
   const n = document.createElement(tag);
@@ -14,7 +15,7 @@ const el = (tag, props = {}, html = '') => {
 const note = (html, cls = '') => el('div', { className: `note ${cls}`.trim() }, html);
 const badge = (txt, cls = '') => `<span class="badge ${cls}">${txt}</span>`;
 
-export function openSettingsModal({ store, initialTab, authRequired, user, onThemeChange, onRolesChange, onModelsChange, onDataChange, onMemoryChange, onSettingsChange, onLogout }) {
+export function openSettingsModal({ store, initialTab, authRequired, user, owner = false, legal = {}, onThemeChange, onRolesChange, onModelsChange, onDataChange, onMemoryChange, onSettingsChange, onLogout }) {
   const settings = storage.getSettings();
   const save = () => { storage.saveSettings(settings); onSettingsChange?.(); };
 
@@ -26,7 +27,9 @@ export function openSettingsModal({ store, initialTab, authRequired, user, onThe
       models: { label: 'Modelle', render: renderModels },
       memory: { label: 'Erinnerungen', render: renderMemory },
       roles: { label: 'Rollen', render: renderRoles },
+      stats: { label: 'Nutzung', render: renderStats },
       pro: { label: 'Pro', render: renderPro },
+      ...(owner ? { server: { label: 'Server', render: renderServer } } : {}),
       data: { label: 'Daten', render: renderData },
       about: { label: 'Über', render: renderAbout },
     },
@@ -43,10 +46,17 @@ export function openSettingsModal({ store, initialTab, authRequired, user, onThe
     });
     wrap.appendChild(settingsRow({ label: 'Anzeigename', sub: user ? `Angemeldet als ${escapeHtml(user.email)}` : 'Wird in der Seitenleiste gezeigt', control: nameInput }));
 
-    wrap.appendChild(settingsRow({
-      label: 'Dunkles Design', sub: 'Hell (Standard) oder dunkel',
-      control: switchControl(settings.theme === 'dark', (on) => { settings.theme = on ? 'dark' : 'light'; save(); onThemeChange(settings.theme); }),
-    }));
+    const choice = (key, options, fallback) => {
+      const s = el('select', { className: 'set-select' });
+      for (const [v, t] of options) s.appendChild(el('option', { value: v, textContent: t }));
+      s.value = settings[key] || fallback;
+      s.addEventListener('change', () => { settings[key] = s.value; save(); onThemeChange(settings.theme); });
+      return s;
+    };
+    wrap.appendChild(settingsRow({ label: 'Design', sub: '„System“ folgt dem Gerät', control: choice('theme', [['light', 'Hell'], ['dark', 'Dunkel'], ['system', 'System']], 'light') }));
+    wrap.appendChild(settingsRow({ label: 'Textgröße', sub: 'Für Antworten und Nachrichten', control: choice('fontSize', [['s', 'Klein'], ['m', 'Normal'], ['l', 'Groß'], ['xl', 'Sehr groß']], 'm') }));
+    wrap.appendChild(settingsRow({ label: 'Dichte', sub: 'Kompakt zeigt mehr auf einmal', control: choice('density', [['normal', 'Normal'], ['compact', 'Kompakt']], 'normal') }));
+    wrap.appendChild(settingsRow({ label: 'Breite des Chats', control: choice('width', [['narrow', 'Schmal'], ['normal', 'Normal'], ['wide', 'Breit']], 'normal') }));
 
     const roleSelect = el('select', { className: 'set-select' });
     for (const r of allRoles(settings)) roleSelect.appendChild(el('option', { value: r.id, textContent: r.name }));
@@ -254,14 +264,24 @@ export function openSettingsModal({ store, initialTab, authRequired, user, onThe
     refresh();
     wrap.appendChild(info);
 
-    const exp = el('button', { className: 'btn', type: 'button', textContent: 'Alle Chats sichern (JSON)' });
+    const full = el('button', { className: 'btn primary', type: 'button', innerHTML: '<b>Alles sichern</b> (Chats, Projekte, Einstellungen)' });
+    full.addEventListener('click', () => exportBackupJSON({ chats: store.raw(), projects: storage.getProjects(), settings: storage.getSettings() }));
+    wrap.appendChild(full);
+    const exp = el('button', { className: 'btn', type: 'button', textContent: 'Nur Chats sichern (JSON)' });
     exp.addEventListener('click', () => exportAllJSON(store.raw()));
     const file = el('input', { type: 'file', accept: 'application/json,.json', hidden: true });
     const imp = el('button', { className: 'btn', type: 'button', textContent: 'Sicherung einlesen' });
     imp.addEventListener('click', () => file.click());
     file.addEventListener('change', async () => {
       try {
-        const added = store.importChats(parseImport(await file.files[0].text()));
+        const backup = parseBackup(await file.files[0].text());
+        const added = store.importChats(backup.chats);
+        if (backup.projects.length) {
+          const have = new Set(storage.getProjects().map(p => p.id));
+          storage.saveProjects([...storage.getProjects(), ...backup.projects.filter(p => !have.has(p.id))]);
+        }
+        if (Object.keys(backup.settings).length) storage.saveSettings({ ...storage.getSettings(), ...backup.settings });
+        if (backup.projects.length || Object.keys(backup.settings).length) setTimeout(() => location.reload(), 900);
         showToast(added ? `${added} Chat(s) importiert` : 'Keine neuen Chats in der Datei');
         refresh(); onDataChange();
       } catch (e) { showToast(`Import fehlgeschlagen: ${e.message}`); }
@@ -279,6 +299,78 @@ export function openSettingsModal({ store, initialTab, authRequired, user, onThe
   }
 
   // ---------- Über ----------
+  const legalLinks = (l) => {
+    const items = [['imprint', 'Impressum'], ['privacy', 'Datenschutz'], ['terms', 'AGB']].filter(([k]) => l?.[k]);
+    return items.length ? `<div class="group-title">Rechtliches</div><div class="settings-row-sub">${items.map(([k, t]) => `<a href="${escapeHtml(l[k])}" target="_blank" rel="noopener noreferrer">${t}</a>`).join(' · ')}</div>` : '';
+  };
+
+  // ---------- Nutzung (aus den Chats in diesem Browser) ----------
+  function renderStats() {
+    const wrap = el('div');
+    const chats = store.all();
+    const msgs = chats.flatMap(c => c.messages.map(m => ({ ...m, chat: c })));
+    const ai = msgs.filter(m => m.role === 'assistant' && !m.media);
+    const tokens = ai.reduce((n, m) => n + (m.stats?.tokens || 0), 0);
+    const tps = ai.map(m => m.stats?.tps).filter(Boolean);
+    const day = (t) => new Date(t).toISOString().slice(0, 10);
+    const days = Array.from({ length: 14 }, (_, i) => day(Date.now() - (13 - i) * 86400000));
+    const perDay = Object.fromEntries(days.map(d => [d, 0]));
+    msgs.filter(m => m.role === 'user' && m.createdAt).forEach(m => { const d = day(m.createdAt); if (d in perDay) perDay[d]++; });
+    const max = Math.max(1, ...Object.values(perDay));
+    const models = {};
+    ai.forEach(m => { if (m.stats?.model) models[m.stats.model] = (models[m.stats.model] || 0) + 1; });
+    const top = Object.entries(models).sort((a, b) => b[1] - a[1]).slice(0, 4);
+    wrap.innerHTML = `
+      <div class="stat-grid">
+        <div class="stat"><b>${chats.length}</b><span>Chats</span></div>
+        <div class="stat"><b>${msgs.filter(m => m.role === 'user').length}</b><span>Fragen</span></div>
+        <div class="stat"><b>${tokens.toLocaleString('de-AT')}</b><span>Tokens gelesen</span></div>
+        <div class="stat"><b>${tps.length ? Math.round(tps.reduce((a, b) => a + b, 0) / tps.length * 10) / 10 : '–'}</b><span>Tokens pro Sekunde</span></div>
+      </div>
+      <div class="group-title">Fragen pro Tag (14 Tage)</div>
+      <div class="bars">${days.map(d => `<div class="bar-col" title="${d}: ${perDay[d]}"><i style="height:${Math.round(perDay[d] / max * 100)}%"></i><small>${d.slice(8)}</small></div>`).join('')}</div>
+      ${top.length ? `<div class="group-title">Modelle</div>${top.map(([m, n]) => `<div class="pro-use"><div class="pro-use-head"><span>${escapeHtml(m)}</span><b>${n}×</b></div><div class="pro-bar"><i style="width:${Math.round(n / top[0][1] * 100)}%"></i></div></div>`).join('')}` : ''}
+      <div class="settings-row-sub">Die Zahlen stammen aus den Chats in diesem Browser. Gelöschte Chats zählen nicht mit.</div>`;
+    return wrap;
+  }
+
+  // ---------- Server (nur Besitzer) ----------
+  function renderServer() {
+    const wrap = el('div');
+    wrap.innerHTML = '<div class="note">Lade …</div>';
+    const fmtB = (n) => (n > 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.round(n / 1024)} KB`);
+    const up = (s) => (s > 86400 ? `${Math.floor(s / 86400)} T ${Math.floor(s % 86400 / 3600)} Std` : `${Math.floor(s / 3600)} Std ${Math.floor(s % 3600 / 60)} Min`);
+    const chart = (rows, key, label) => { const m = Math.max(1, ...rows.map(r => r[key])); return `<div class="group-title">${label}</div><div class="bars">${rows.map(r => `<div class="bar-col" title="${r.date}: ${r[key]}"><i style="height:${Math.round(r[key] / m * 100)}%"></i><small>${r.date.slice(8)}</small></div>`).join('')}</div>`; };
+    const draw = (s) => {
+      const f = s.features, t = s.metrics.totals;
+      const base = (serverBase() || location.origin).replace(/\/$/, '');
+      wrap.innerHTML = `
+        ${s.auth === 'AUS' ? '<div class="note warn"><b>Anmeldung ist aus.</b> Der Server darf so nie öffentlich erreichbar sein.</div>' : ''}
+        <div class="stat-grid">
+          <div class="stat"><b>${s.version}</b><span>Version</span></div>
+          <div class="stat"><b>${up(s.uptimeSec)}</b><span>läuft seit</span></div>
+          <div class="stat"><b>${s.memory.processMB} MB</b><span>Speicher (frei ${s.memory.freeMB} von ${s.memory.totalMB})</span></div>
+          <div class="stat"><b>${s.load[0]}</b><span>Last (${s.cpus} Kerne)</span></div>
+        </div>
+        <div class="settings-row-sub">${escapeHtml(s.platform)} · Node ${escapeHtml(s.node)} · Daten: ${fmtB(s.data.all.bytes)} in ${s.data.all.files} Dateien (Videos ${s.data.videos.files}, geteilte Chats ${s.data.shares.files}) · Proxy: ${escapeHtml(s.trustProxy)} · gerade aktiv: ${s.activeChats}</div>
+        <div class="group-title">Funktionen</div>
+        <div class="pro-actions">${[['Websuche', f.search, s.searchProvider], ['Bilder', f.image], ['Videos', f.video], ['Teilen', f.share], ['Bezahlen', f.stripe], ['Codes', f.codes], ['API', f.apiKeys > 0, f.apiKeys ? `${f.apiKeys} Schlüssel` : '']].map(([n, on, extra]) => badge(`${n}${on && extra ? ` · ${escapeHtml(extra)}` : ''}`, on ? 'ok' : '')).join(' ')}</div>
+        <div class="group-title">Letzte 14 Tage</div>
+        <div class="settings-row-sub">${t.chat} Chats · ${t.tokens.toLocaleString('de-AT')} Tokens · ${t.search} Suchen · ${t.image} Bilder · ${t.video} Videos · ${t.api} API-Aufrufe · ${t.errors} Fehler</div>
+        ${chart(s.metrics.rows, 'chat', 'Chats pro Tag')}${chart(s.metrics.rows, 'users', 'Aktive Konten pro Tag')}
+        <div class="group-title">API für andere Programme</div>
+        <div class="settings-row-sub">${f.apiKeys ? `OpenAI-kompatibel unter <code>${escapeHtml(base)}/v1</code>. Beispiel:<pre class="api-ex">curl ${escapeHtml(base)}/v1/chat/completions \\
+  -H "Authorization: Bearer DEIN_SCHLÜSSEL" \\
+  -H "Content-Type: application/json" \\
+  -d '{"messages":[{"role":"user","content":"Hallo"}]}'</pre>` : 'Nicht eingerichtet. Trage in der <code>.env</code> <code>API_KEYS=name:ein-langer-schluessel</code> ein (mindestens 16 Zeichen) und starte den Dienst neu.'}</div>
+        <button class="btn" id="srv-refresh">Aktualisieren</button>`;
+      wrap.querySelector('#srv-refresh').addEventListener('click', load);
+    };
+    const load = () => api.adminStatus().then(draw).catch(e => { wrap.innerHTML = `<div class="note warn">${escapeHtml(e.message || 'Nicht erreichbar')}</div>`; });
+    load();
+    return wrap;
+  }
+
   // ---------- Pro ----------
   function renderPro() {
     const wrap = el('div');
@@ -295,6 +387,7 @@ export function openSettingsModal({ store, initialTab, authRequired, user, onThe
         ${p.unlimited ? '' : `<div class="group-title">Dieser Monat</div>${bar('Videos', p.used.video, p.limits.video)}${bar('Bilder', p.used.image, p.limits.image)}`}
         <div class="pro-actions"></div>
         ${p.billing.codes ? `<div class="group-title">Code einlösen</div><div class="pro-code"><input class="text-input" id="pro-code" placeholder="Code eingeben" autocomplete="off" spellcheck="false"><button class="btn" id="pro-redeem">Einlösen</button></div>` : ''}
+        ${legalLinks(legal) ? `<div class="settings-row-sub">Mit dem Kauf gelten unsere Bedingungen: ${[['terms', 'AGB'], ['privacy', 'Datenschutz'], ['imprint', 'Impressum']].filter(([k]) => legal[k]).map(([k, t]) => `<a href="${escapeHtml(legal[k])}" target="_blank" rel="noopener noreferrer">${t}</a>`).join(' · ')}</div>` : ''}
         ${!p.billing.stripe && !p.billing.codes ? '<div class="note warn">Der Server hat noch keine Bezahlung eingerichtet (STRIPE_* in der .env, siehe README).</div>' : ''}`;
       const actions = wrap.querySelector('.pro-actions');
       if (!p.unlimited && !p.pro && p.billing.stripe) {
@@ -320,15 +413,16 @@ export function openSettingsModal({ store, initialTab, authRequired, user, onThe
   function renderAbout() {
     const wrap = el('div');
     wrap.innerHTML = `
-      <div class="note"><b>AI Core 3.4.2</b> · deine eigene AI-Chat-Plattform von OrbitLabs.<br>Lokale Modelle über Ollama, optional DeepSeek V4.1 Flash in der Cloud.</div>
+      <div class="note"><b>AI Core 3.5</b> · deine eigene AI-Chat-Plattform von OrbitLabs.<br>Lokale Modelle über Ollama, optional DeepSeek V4.1 Flash in der Cloud.</div>
       <div class="group-title">Tastenkürzel</div>
       <div class="settings-row-sub" style="line-height:2">
         <kbd>Enter</kbd> senden · <kbd>Shift</kbd>+<kbd>Enter</kbd> neue Zeile<br>
         <kbd>/</kbd> Befehle (<kbd>/neu</kbd> <kbd>/coder</kbd> <kbd>/datei</kbd> <kbd>/merken</kbd> <kbd>/rolle</kbd> <kbd>/export</kbd> <kbd>/hilfe</kbd>)<br>
         <kbd>Esc</kbd> Antwort stoppen oder Panel schließen<br>
         <kbd>Strg</kbd>+<kbd>K</kbd> Chats durchsuchen · <kbd>Strg</kbd>+<kbd>Shift</kbd>+<kbd>O</kbd> neuer Chat<br>
-        <kbd>?</kbd> diese Hilfe
-      </div>`;
+        <kbd>Strg</kbd>+<kbd>/</kbd> Befehlspalette · <kbd>?</kbd> diese Hilfe
+      </div>
+      ${legalLinks(legal)}`;
     return wrap;
   }
 }

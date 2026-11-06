@@ -78,7 +78,9 @@ export function resolveModel(requested, cfg = getConfig()) {
     return { provider: prefix, model: name, think: false };
   }
   // Ohne Präfix: nur echte Namen übernehmen, Platzhalter ("core-large") ignorieren
-  const def = resolveModel(defaultModelId(cfg), cfg);
+  const dId = defaultModelId(cfg);
+  const dPrefix = dId.indexOf('/') > 0 ? dId.slice(0, dId.indexOf('/')) : '';
+  const def = SOURCES.includes(dPrefix) ? resolveModel(dId, cfg) : { provider: 'demo', model: 'demo', think: false };   // ohne Quelle nicht endlos im Kreis
   if (cfg.provider === 'ollama' && raw && !raw.startsWith('core-')) return { provider: 'ollama', model: raw, think: false };
   return def;
 }

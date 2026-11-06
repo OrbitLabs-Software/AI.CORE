@@ -141,6 +141,8 @@ export const api = {
     return res.ok;
   },
 
+  async adminStatus() { const res = await request('/api/admin/status'); if (!res.ok) throw new ApiError(await errorMessage(res), res.status); return res.json(); },
+
   /** Websuche über den Server. deep = die ersten Seiten werden gelesen. */
   async search(query, deep = false) {
     const res = await jsonPost('/api/search', { query, deep });
