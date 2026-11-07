@@ -141,6 +141,11 @@ export const api = {
     return res.ok;
   },
 
+  // ---------- Geräte-Abgleich ----------
+  async syncPull(since = 0) { const res = await request(`/api/sync?since=${encodeURIComponent(since)}`); if (!res.ok) throw new ApiError(await errorMessage(res), res.status); return res.json(); },
+  async syncPush(body) { const res = await jsonPost('/api/sync', body); if (!res.ok) throw new ApiError(await errorMessage(res), res.status); return res.json(); },
+  async syncWipe() { const res = await request('/api/sync', { method: 'DELETE' }); if (!res.ok) throw new ApiError(await errorMessage(res), res.status); },
+
   async adminStatus() { const res = await request('/api/admin/status'); if (!res.ok) throw new ApiError(await errorMessage(res), res.status); return res.json(); },
 
   /** Websuche über den Server. deep = die ersten Seiten werden gelesen. */

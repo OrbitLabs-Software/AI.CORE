@@ -1,4 +1,5 @@
 import { branchInfo } from '../js/branches.js';
+import { isTableName } from '../js/dataprofile.js';
 import { renderMarkdown, escapeHtml, extractCodeBlocks } from '../js/ui.js';
 import { messageExports } from '../js/formatsMeta.js';
 
@@ -36,7 +37,9 @@ function statsLine(m) {
 
 function filesRow(attachments) {
   if (!attachments?.length) return '';
-  return `<div class="message-files">${attachments.map(a => a.preview
+  return `<div class="message-files">${attachments.map((a, i) => isTableName(a.name) && a.text
+    ? `<span class="file-chip">📊 <span class="fc-name">${escapeHtml(a.name)}</span><button type="button" class="fc-analyze" data-analyze="${i}">Ansehen</button></span>`
+    : a.preview
     ? `<span class="file-chip"><img src="${a.preview}" alt=""><span class="fc-name">${escapeHtml(a.name)}</span></span>`
     : `<span class="file-chip" ${a.text ? '' : 'title="Kein Text gelesen — die KI sieht nur den Dateinamen"'}>📄 <span class="fc-name">${escapeHtml(a.name)}</span>${a.text ? '' : '<span class="fc-warn">⚠</span>'}</span>`).join('')}</div>`;
 }
@@ -88,6 +91,7 @@ export function renderMessageEl(message, h = {}) {
   content.innerHTML = filesRow(message.attachments) + mediaBlock(message, h) + (message.role === 'assistant'
     ? renderMarkdown(message.content || '')
     : escapeHtml(message.content || ''));
+  content.addEventListener('click', (e) => { const b = e.target.closest('[data-analyze]'); if (b) h.onAnalyze?.(message.attachments[Number(b.dataset.analyze)]); });
   body.appendChild(content);
   if (message.sources?.length) body.insertAdjacentHTML('beforeend', sourcesRow(message));
 

@@ -21,11 +21,12 @@ import { startVideo, videoStatus, videoFile, videoEnabled } from './video.js';
 import { planStatus, reserve, refund, grantPro, revokePro, proInfo, redeemCode, codesEnabled } from './plan.js';
 import { webSearch, searchEnabled } from './search.js';
 import { isOwnerSession } from './owner.js';
+import { syncEnabled, pull as syncPull, push as syncPush, prune as syncPrune, wipe as syncWipe } from './sync.js';
 import { record, snapshot } from './metrics.js';
 import { parseApiKeys, checkApiKey, errorBody, toInternal, createThinkFilter, completionId, chunk, completion, modelList, estimateTokens } from './openai.js';
 import { stripeEnabled, createCheckout, confirmCheckout, subscriptionState, createPortal } from './stripe.js';
 
-export const VERSION = '3.5.0';
+export const VERSION = '4.0.0';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024, files: 1 } });
 
@@ -57,7 +58,7 @@ router.get('/config', (req, res) => {
   const cfg = getConfig();
   res.json({
     version: VERSION, provider: cfg.provider,
-    features: { search: searchEnabled(), image: imageEnabled(), video: videoEnabled(), share: shareEnabled(), pro: stripeEnabled() || codesEnabled(), api: apiKeys().length > 0 },
+    features: { search: searchEnabled(), image: imageEnabled(), video: videoEnabled(), share: shareEnabled(), pro: stripeEnabled() || codesEnabled(), api: apiKeys().length > 0, sync: syncEnabled() },
     legal: legalLinks(), owner: isAuthenticated(req) && isOwner(req),
     ...authInfo(req),
   });
@@ -379,6 +380,24 @@ router.post('/chat/stream', chatLimiter, async (req, res) => {
     }
   }
 });
+
+// ---------- Geräte-Abgleich ----------
+const syncLimiter = rateLimit({ windowMs: 60 * 1000, max: 90, message: 'Zu viele Abgleiche. Bitte kurz warten.' });
+const syncOff = (res) => res.status(403).json({ error: 'Der Abgleich ist auf dem Server abgeschaltet.' });
+router.get('/sync', syncLimiter, (req, res) => {
+  if (!syncEnabled()) return syncOff(res);
+  const key = accountOf(req).key;
+  syncPrune(key);
+  res.json(syncPull(key, req.query.since));
+});
+router.post('/sync', syncLimiter, (req, res) => {
+  if (!syncEnabled()) return syncOff(res);
+  const r = syncPush(accountOf(req).key, req.body);
+  if (r.error) return res.status(r.status).json({ error: r.error });
+  res.json(r);
+});
+
+router.delete('/sync', syncLimiter, (req, res) => res.json({ ok: syncWipe(accountOf(req).key) }));
 
 // ---------- Server-Übersicht (nur Besitzer) ----------
 function dirStats(dir, depth = 0) {

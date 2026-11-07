@@ -1,5 +1,13 @@
 # AI Core 3.2
 
+## Neu in 4.0
+
+Aufgeräumter Chat (Werkzeug-Menü, Chips, ruhigere Leiste, neue Startseite), Einstellungen mit Seitenleiste, **Abgleich zwischen Geräten**, **Papierkorb** und **Tabellen-Ansicht** für CSV. Die Einzelheiten stehen im `CHANGELOG.md`.
+
+**Abgleich zwischen Geräten:** Jede Person schaltet ihn selbst unter Einstellungen → Abgleich ein. Auf dem Server liegt dann pro Konto eine Datei in `data/sync`. Der Betreiber des Servers kann diese Chats lesen, das steht auch beim Einschalten. Mit `SYNC=false` in der `.env` ist der Abgleich ganz aus. Grenzen: 2000 Chats, 200 Projekte, 40 MB pro Konto, 1,5 MB pro Chat. Zu große Chats werden nicht abgeglichen und im Status gemeldet. Es gilt die neuere Änderung; gehen zwei Geräte-Uhren stark auseinander, kann bei gleichzeitigem Bearbeiten derselben Chats die falsche Fassung gewinnen.
+
+**Papierkorb:** 30 Tage. Mit eingeschaltetem Abgleich bleibt der Löschmarker 45 Tage auf dem Server, damit auch Geräte, die lange aus waren, den Chat noch entfernen.
+
 Deine eigene AI-Chat-Plattform von OrbitLabs: lokale Modelle über **Ollama** auf dem Tiny, optional ein starkes
 Cloud-Modell (**DeepSeek V4.1 Flash**), Erinnerungen, ein Coder-Modus mit Live-Vorschau und Login wie auf der OrbitLabs-Webseite.
 

@@ -5,12 +5,29 @@ export function createChatStore() {
   let chats = storage.getChats();
   let activeId = chats[0]?.id || null;
 
-  function persist() {
-    storage.saveChats(chats);
+  // Änderungen erkennen: Wer direkt an einem Chat schreibt (Bewertung, Version, Zusammenfassung …) und dann save() ruft,
+  // bekommt automatisch ein neues updatedAt. Das braucht der Geräte-Abgleich.
+  const sigs = new WeakMap();
+  function signature(c) {
+    let fb = 0, no = 0, alts = 0, vs = 0;
+    for (const m of c.messages) { if (m.feedback) fb++; no += (m.no || 0) + (m.vIdx || 0); alts += m.alts?.length || 0; vs += m.versions?.length || 0; }
+    const last = c.messages.at(-1);
+    return [c.title, c.favorite, c.deletedAt, c.summary?.text?.length, c.shared, c.projectId, c.roleId, c.messages.length, last?.id, last?.content?.length, last?.video?.state, fb, no, alts, vs].join('|');
   }
 
+  function persist() {
+    for (const c of chats) {
+      const sig = signature(c);
+      if (sigs.has(c) && sigs.get(c) !== sig) c.updatedAt = Date.now();
+      sigs.set(c, sig);
+    }
+    storage.saveChats(chats);
+    if (typeof window !== 'undefined') window.dispatchEvent(new Event('aicore:store-changed'));
+  }
+
+  /** Sichtbare Chats (ohne Papierkorb), neueste zuerst. */
   function all() {
-    return chats.slice().sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt));
+    return chats.filter(c => !c.deletedAt).sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt));
   }
 
   function favorites() {
@@ -50,9 +67,37 @@ export function createChatStore() {
     return chat;
   }
 
+  /** Löschen = in den Papierkorb (30 Tage), von dort lässt sich der Chat wiederherstellen. */
   function deleteChat(id) {
-    chats = chats.filter(c => c.id !== id);
-    if (activeId === id) activeId = chats[0]?.id || null;
+    const chat = chats.find(c => c.id === id);
+    if (!chat) return;
+    chat.deletedAt = Date.now(); chat.updatedAt = chat.deletedAt; chat.favorite = false;
+    if (activeId === id) activeId = all()[0]?.id || null;
+    persist();
+  }
+  const trash = () => chats.filter(c => c.deletedAt).sort((a, b) => b.deletedAt - a.deletedAt);
+  function restore(id) {
+    const chat = chats.find(c => c.id === id && c.deletedAt);
+    if (!chat) return false;
+    delete chat.deletedAt; chat.updatedAt = Date.now();
+    persist();
+    return true;
+  }
+  function purge(id) { chats = chats.filter(c => !(c.id === id && c.deletedAt)); persist(); }
+  function emptyTrash() { const n = trash().length; chats = chats.filter(c => !c.deletedAt); persist(); return n; }
+  /** Papierkorb nach `days` Tagen leeren (ohne Abgleich sofort, sonst bleibt der Marker beim Server). */
+  function purgeOld(days = 30, now = Date.now()) {
+    const keep = chats.filter(c => !c.deletedAt || c.deletedAt > now - days * 86400000);
+    const n = chats.length - keep.length;
+    if (n) { chats = keep; persist(); }
+    return n;
+  }
+  /** Ersetzt oder ergänzt einen Chat (Abgleich). */
+  function upsert(chat) {
+    const i = chats.findIndex(c => c.id === chat.id);
+    if (i >= 0) chats[i] = chat; else chats.push(chat);
+    sigs.delete(chat);
+    if (activeId === chat.id && chat.deletedAt) activeId = all()[0]?.id || null;
     persist();
   }
 
@@ -141,6 +186,7 @@ export function createChatStore() {
     all, favorites, history, get, getActive, setActive, createChat, deleteChat,
     toggleFavorite, addMessage, updateMessage, removeMessage, search,
     setRole, rename, truncateFrom, importChats, clearAll, raw, save: persist,
+    trash, restore, purge, emptyTrash, purgeOld, upsert,
     get activeId() { return activeId; },
   };
 }

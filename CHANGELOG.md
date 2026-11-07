@@ -1,5 +1,24 @@
 # Änderungen
 
+## 4.0.0 — übersichtlicher und nützlicher
+
+**Aufgeräumte Oberfläche**
+- **Werkzeug-Menü** unter dem Eingabefeld: Rolle, Suche und Stil sind aus der oberen Leiste umgezogen. Abweichungen vom Normalfall zeigen Chips über dem Eingabefeld, ein Klick setzt sie zurück.
+- **Obere Leiste** zeigt nur noch Titel, Modell und Vorschau. Export, Teilen und Design stehen im Menü „⋯“.
+- **Neue Startseite** mit sechs Schnellstart-Kacheln (Recherchieren, Schreiben, Programmieren, Daten analysieren, Sprechen, Bild erzeugen), den Vorschlägen als Chips und „Weitermachen“ mit den letzten Chats und Projekten. Bei niedrigen Fenstern wird sie kompakter.
+- **Einstellungen mit Seitenleiste** und vier Gruppen (Persönlich, KI, Konto und Daten, Übersicht) statt zehn Reitern.
+- **Neu in 4.0:** einmal nach dem Update, danach mit `/neu`.
+
+**Neue Funktionen**
+- **Abgleich zwischen Geräten** (Einstellungen → Abgleich, ausdrücklich einzuschalten): Chats und Projekte zeigen auf Handy und Computer denselben Stand. Die neuere Änderung gewinnt, Bilder und Dateivorschauen bleiben auf dem Gerät, die Daten liegen auf deinem Server. Alle abgeglichenen Daten lassen sich vom Server löschen.
+- **Papierkorb:** Löschen verschiebt Chats für 30 Tage in den Papierkorb (Einstellungen → Papierkorb). Zurückholen geht von dort, auch auf anderen Geräten.
+- **Tabellen verstehen:** CSV- und TSV-Dateien bekommen eine Ansicht („Ansehen“) mit Spalten, Typen, Kennzahlen, Diagrammen und den ersten Zeilen. Große Tabellen gehen als kompakte Zusammenfassung ans Modell statt als tausende Zeilen. Deutsche und englische Zahlen, Datumsformate und fehlende Werte werden erkannt.
+- Änderungen an einem Chat (Bewertung, Zweig, Zusammenfassung) werden automatisch als neuer Stand erkannt.
+
+**Intern**
+- Projekte werden beim Löschen als Marker behalten, damit der Abgleich sie überall entfernen kann.
+- Eingangszeit auf dem Server statt Gerätezeit entscheidet, was ein Gerät noch abholen muss. Eine falsch gehende Uhr verliert dadurch keine Änderungen.
+
 ## 3.5.0 — professionell
 
 **Neue Funktionen**

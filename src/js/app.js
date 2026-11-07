@@ -25,6 +25,11 @@ import { runJs } from './runner.js';
 import { takeBranch, applyBranch, switchBranch } from './branches.js';
 import { applyAppearance, watchSystemTheme, resolveTheme } from './appearance.js';
 import { openPalette } from './palette.js';
+import { createSyncEngine } from './sync.js';
+import { isTableName, tableForModel } from './dataprofile.js';
+import { openDataDialog } from './dataview.js';
+import { showWhatsNew, WHATS_NEW_VERSION } from './whatsnew.js';
+import { setupToolsMenu, setupChips, setupMoreMenu } from './layout.js';
 import { openTemplateDialog, insertTemplate } from './templates.js';
 
 // ---------- DOM ----------
@@ -47,6 +52,7 @@ applyAppearance(settings);
 watchSystemTheme(() => settings);
 
 const store = createChatStore();
+store.purgeOld(30);   // Papierkorb nach 30 Tagen leeren
 let abortController = null;
 let busy = false;
 let userAborted = false;
@@ -156,6 +162,7 @@ $('new-project-btn').addEventListener('click', () => {
 });
 
 function renderSidebar() {
+  if (typeof renderChips === 'function') try { renderChips(); } catch { /* noch nicht bereit */ }
   renderProjects();
   const handlers = { activeId: store.activeId, onSelect: selectChat, onDelete: onDeleteChat, onToggleFavorite: (id) => { store.toggleFavorite(id); renderSidebar(); } };
   const q = searchInput.value.trim();
@@ -176,6 +183,7 @@ function renderWelcome(roleId) {
     : roleId === 'files'
       ? 'Sag, welche Datei du brauchst. Unter der Antwort erscheint ein Knopf, der sie erzeugt.'
       : 'Stelle eine Frage, hänge eine Datei an oder wähle einen Vorschlag.';
+  renderQuickTiles();
   const box = $('suggestion-cards');
   box.innerHTML = '';
   for (const s of SUGGESTIONS[SUGGESTIONS[roleId] ? roleId : 'default']) {
@@ -190,12 +198,52 @@ function renderWelcome(roleId) {
 
 const projects = createProjectStore();
 
+// ---------- Startseite ----------
+const setSelect = (id, value) => { const s = $(id); if (s) { s.value = value; s.dispatchEvent(new Event('change', { bubbles: true })); } };
+function renderQuickTiles() {
+  const tiles = [
+    ['🔎', 'Recherchieren', 'Websuche mit Quellen', () => { setSelect('search-select', 'web'); composer.setValue('Recherchiere: '); }],
+    ['✍️', 'Schreiben', 'Vorlagen für E-Mail, Text, Bewerbung', () => openTemplates()],
+    ['💻', 'Programmieren', 'Rolle Coder mit Vorschau', () => { setSelect('role-select', 'coder'); composer.setValue('Baue '); }],
+    ['📊', 'Daten analysieren', 'CSV anhängen, Spalten und Diagramme', () => { showToast('Hänge eine CSV-Datei an und frage dann, was du wissen willst.'); $('attach-btn').click(); }],
+    ['🎙️', 'Sprechen', 'Sprachmodus, freihändig', () => startVoice()],
+    ['🖼️', 'Bild erzeugen', 'Beschreibe, was du sehen willst', () => composer.setValue('/bild ')],
+  ];
+  const box = $('quick-tiles');
+  box.innerHTML = '';
+  for (const [icon, title, sub, run] of tiles) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'quick-tile';
+    b.innerHTML = `<span class="qt-icon" aria-hidden="true">${icon}</span><b>${title}</b><small>${sub}</small>`;
+    b.addEventListener('click', () => { run(); composerInput.focus(); });
+    box.appendChild(b);
+  }
+  const resume = $('resume-list');
+  const chats = store.all().filter(c => c.messages.length).slice(0, 3);
+  const projs = projects.all().slice(0, 3);
+  resume.hidden = !chats.length && !projs.length;
+  resume.innerHTML = (chats.length || projs.length ? '<div class="resume-title">Weitermachen</div>' : '');
+  for (const c of chats) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'resume-item'; b.innerHTML = `<span>💬</span><span>${escapeHtml(c.title)}</span>`;
+    b.addEventListener('click', () => selectChat(c.id));
+    resume.appendChild(b);
+  }
+  for (const p of projs) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'resume-item'; b.innerHTML = `<span>📁</span><span>${escapeHtml(p.name)}</span>`;
+    b.addEventListener('click', () => openProject(p.id));
+    resume.appendChild(b);
+  }
+}
+
 function messageHandlers(chat) {
   return {
     speakingId,
     onCopy: (m) => { navigator.clipboard?.writeText(m.content); showToast('Nachricht kopiert'); },
     onRegenerate: (m) => regenerate(chat.id, m),
     onEdit: (m) => editMessage(chat.id, m),
+    onAnalyze: (a) => a?.text && openDataDialog({ name: a.name, text: a.text }),
     onBranch: (m, d) => { if (busy) return showToast('Bitte warten, die KI antwortet gerade.'); if (switchBranch(chat, m.id, d)) { store.save(); renderMessages({ keepScroll: true }); } },
     onSpeak: speak,
     onFeedback: (m, v) => { m.feedback = m.feedback === v ? null : v; store.save(); renderMessages({ keepScroll: true }); },
@@ -313,6 +361,7 @@ function onDeleteChat(id) {
   store.deleteChat(id);
   renderSidebar();
   renderMessages();
+  showToast('In den Papierkorb verschoben. Zurückholen: Einstellungen → Papierkorb');
 }
 
 function newChat(roleId = null) {
@@ -393,7 +442,7 @@ function buildHistory(chat) {
     ...(m.role === 'user' && m.attachments?.length ? {
       attachments: m.attachments.map(a => ({
         name: a.name,
-        text: a.text || undefined,
+        text: a.text ? (isTableName(a.name) ? tableForModel(a.name, a.text) : a.text) : undefined,
         image: i === lastIdx && a.preview?.startsWith('data:image/') ? a.preview : undefined,
       })),
     } : {}),
@@ -729,6 +778,9 @@ function openCommandPalette() {
     { label: 'Design wechseln (hell/dunkel)', hint: '', run: () => $('theme-toggle').click() },
     { label: 'Einstellungen', hint: '', run: () => openSettings('general') },
     { label: 'Nutzung ansehen', hint: 'Einstellungen', run: () => openSettings('stats') },
+    { label: 'Papierkorb', hint: 'Einstellungen', run: () => openSettings('trash') },
+    { label: 'Abgleich zwischen Geräten', hint: 'Einstellungen', run: () => openSettings('sync') },
+    { label: 'Was ist neu in 4.0', hint: '/neu', run: showWhatsNew },
     { label: 'AI Core Pro', hint: 'Einstellungen', run: () => openSettings('pro') },
     ...(appConfig.owner ? [{ label: 'Server-Übersicht', hint: 'Einstellungen', run: () => openSettings('server') }] : []),
     { label: 'Tastenkürzel und Hilfe', hint: '?', run: () => openSettings('about') },
@@ -992,6 +1044,9 @@ function importShared(data) {
 $('share-btn').addEventListener('click', shareCurrent);
 
 const COMMANDS = [
+  { name: 'neu', hint: 'Was ist neu in AI Core 4.0', run: showWhatsNew },
+  { name: 'papierkorb', hint: 'Gelöschte Chats ansehen und zurückholen', run: () => openSettings('trash') },
+  { name: 'abgleich', hint: 'Chats zwischen Geräten abgleichen', run: () => openSettings('sync') },
   { name: 'installieren', hint: 'AI Core als App auf dem Gerät installieren', run: installApp },
   { name: 'palette', hint: 'Befehlspalette öffnen (Strg+/)', run: () => openCommandPalette() },
   { name: 'vorlage', hint: 'Vorlagen für häufige Aufgaben', run: openTemplates },
@@ -1091,7 +1146,25 @@ function showLogin() {
   });
 }
 
+// ---------- Neu in 4.0 ----------
+function maybeShowWhatsNew() {
+  if (settings.seenVersion === WHATS_NEW_VERSION) return;
+  settings.seenVersion = WHATS_NEW_VERSION; storage.saveSettings(settings);
+  if (store.raw().length) setTimeout(showWhatsNew, 600);   // wer neu startet, braucht keine Neuigkeiten
+}
+
+// ---------- Geräte-Abgleich ----------
+const syncEngine = createSyncEngine({
+  store, projects, api,
+  enabled: () => settings.sync === true && appConfig.features?.sync !== false,
+  onApplied: () => { renderSidebar(); renderMessages({ keepScroll: true }); },
+});
+window.addEventListener('aicore:store-changed', () => syncEngine.soon());
+document.addEventListener('visibilitychange', () => { if (!document.hidden) syncEngine.run(); });
+
 function afterLogin() {
+  syncEngine.start();
+  maybeShowWhatsNew();
   confirmProReturn();
   resumeVideos();
   refreshHealth();
@@ -1110,6 +1183,7 @@ function openSettings(tab) {
   Object.assign(settings, storage.getSettings());
   openSettingsModal({
     store, initialTab: tab,
+    sync: appConfig.features?.sync === false ? null : { engine: syncEngine },
     authRequired: appConfig.authRequired,
     user: appConfig.user,
     owner: Boolean(appConfig.owner), legal: appConfig.legal || {},
@@ -1240,6 +1314,17 @@ if (Speech) {
     rec.start();
   });
 }
+
+// ---------- Aufgeräumte Oberfläche ----------
+setupToolsMenu([
+  { label: 'Vorlage einfügen', hint: '/vorlage', run: openTemplates },
+  { label: 'Datei anhängen', hint: 'PDF, Word, CSV, Bild', run: () => $('attach-btn').click() },
+  { label: 'Sprachmodus', hint: '/sprache', run: () => startVoice() },
+  { label: 'Verlauf zusammenfassen', hint: '/komprimieren', run: compressChat },
+]);
+const renderChips = setupChips();
+setupMoreMenu([{ label: 'Befehlspalette', run: () => openCommandPalette() }, { label: 'Einstellungen', run: () => openSettings('general') }]);
+renderChips();
 
 // ---------- Start ----------
 updateUserLabel();

@@ -28,7 +28,16 @@ export function openModal({ title, tabs, initialTab, onClose }) {
   let active = initialTab || Object.keys(tabs)[0];
 
   if (Object.keys(tabs).length > 1) {
+    const grouped = Object.values(tabs).some(t => t.group);
+    if (grouped) { box.classList.add('has-nav'); tabBar.classList.add('modal-nav'); }
+    let lastGroup = null;
     for (const key of Object.keys(tabs)) {
+      if (grouped && tabs[key].group !== lastGroup) {
+        lastGroup = tabs[key].group;
+        const g = document.createElement('div');
+        g.className = 'modal-nav-group'; g.textContent = lastGroup || '';
+        tabBar.appendChild(g);
+      }
       const tabBtn = document.createElement('button');
       tabBtn.className = 'modal-tab' + (key === active ? ' active' : '');
       tabBtn.textContent = tabs[key].label;

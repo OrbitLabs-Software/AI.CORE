@@ -9,16 +9,19 @@ const MAX_PROJECT_CHARS = 400000;   // pro Projekt (der Speicher im Browser ist 
 
 export function createProjectStore() {
   let list = storage.getProjects();
-  const save = () => storage.saveProjects(list);
+  const save = () => { storage.saveProjects(list); if (typeof window !== 'undefined') window.dispatchEvent(new Event('aicore:store-changed')); };
   return {
-    all: () => list.slice().sort((a, b) => b.updatedAt - a.updatedAt),
-    get: (id) => list.find(p => p.id === id) || null,
+    all: () => list.filter(p => !p.deletedAt).sort((a, b) => b.updatedAt - a.updatedAt),
+    get: (id) => list.find(p => p.id === id && !p.deletedAt) || null,
+    raw: () => list,
+    /** Ersetzt oder ergänzt ein Projekt (Abgleich). */
+    upsert(project) { const i = list.findIndex(x => x.id === project.id); if (i >= 0) list[i] = project; else list.push(project); save(); },
     create(name) {
       const p = { id: uid(), name: String(name).trim().slice(0, 60) || 'Projekt', instructions: '', files: [], createdAt: Date.now(), updatedAt: Date.now() };
       list.push(p); save(); return p;
     },
     update(id, patch) { const p = list.find(x => x.id === id); if (p) { Object.assign(p, patch, { updatedAt: Date.now() }); save(); } },
-    remove(id) { list = list.filter(p => p.id !== id); save(); },
+    remove(id) { const p = list.find(x => x.id === id); if (p) { p.deletedAt = Date.now(); p.updatedAt = p.deletedAt; p.files = []; save(); } },
   };
 }
 

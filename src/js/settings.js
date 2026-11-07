@@ -15,25 +15,75 @@ const el = (tag, props = {}, html = '') => {
 const note = (html, cls = '') => el('div', { className: `note ${cls}`.trim() }, html);
 const badge = (txt, cls = '') => `<span class="badge ${cls}">${txt}</span>`;
 
-export function openSettingsModal({ store, initialTab, authRequired, user, owner = false, legal = {}, onThemeChange, onRolesChange, onModelsChange, onDataChange, onMemoryChange, onSettingsChange, onLogout }) {
+export function openSettingsModal({ store, sync = null, initialTab, authRequired, user, owner = false, legal = {}, onThemeChange, onRolesChange, onModelsChange, onDataChange, onMemoryChange, onSettingsChange, onLogout }) {
   const settings = storage.getSettings();
   const save = () => { storage.saveSettings(settings); onSettingsChange?.(); };
 
+  const GROUPS = { general: 'Persönlich', memory: 'Persönlich', roles: 'Persönlich', models: 'KI', pro: 'Konto und Daten', sync: 'Konto und Daten', data: 'Konto und Daten', trash: 'Konto und Daten', stats: 'Übersicht', server: 'Übersicht', about: 'Übersicht' };
+  const defs = {
+    general: { label: 'Allgemein', render: renderGeneral },
+    memory: { label: 'Erinnerungen', render: renderMemory },
+    roles: { label: 'Rollen', render: renderRoles },
+    models: { label: 'Modelle', render: renderModels },
+    pro: { label: 'Pro', render: renderPro },
+    sync: { label: 'Abgleich', render: renderSync },
+    data: { label: 'Daten', render: renderData },
+    trash: { label: 'Papierkorb', render: renderTrash },
+    stats: { label: 'Nutzung', render: renderStats },
+    ...(owner ? { server: { label: 'Server', render: renderServer } } : {}),
+    about: { label: 'Über', render: renderAbout },
+  };
   openModal({
     title: 'Einstellungen',
     initialTab,
-    tabs: {
-      general: { label: 'Allgemein', render: renderGeneral },
-      models: { label: 'Modelle', render: renderModels },
-      memory: { label: 'Erinnerungen', render: renderMemory },
-      roles: { label: 'Rollen', render: renderRoles },
-      stats: { label: 'Nutzung', render: renderStats },
-      pro: { label: 'Pro', render: renderPro },
-      ...(owner ? { server: { label: 'Server', render: renderServer } } : {}),
-      data: { label: 'Daten', render: renderData },
-      about: { label: 'Über', render: renderAbout },
-    },
+    tabs: Object.fromEntries(Object.entries(defs).map(([k, v]) => [k, { ...v, group: GROUPS[k] }])),
   });
+
+  // ---------- Papierkorb ----------
+  function renderTrash() {
+    const wrap = el('div');
+    const draw = () => {
+      const items = store.trash();
+      wrap.innerHTML = `<div class="note">Gelöschte Chats bleiben <b>30 Tage</b> hier und lassen sich zurückholen. Danach sind sie endgültig weg.</div>
+        ${items.length ? items.map(c => `<div class="trash-row" data-id="${c.id}"><div><b>${escapeHtml(c.title)}</b><small>gelöscht am ${new Date(c.deletedAt).toLocaleDateString('de-AT')} · ${c.messages.length} Nachrichten</small></div><div><button class="btn" data-restore>Zurückholen</button><button class="btn" data-purge>Endgültig löschen</button></div></div>`).join('')
+          : '<div class="settings-row-sub">Der Papierkorb ist leer.</div>'}
+        ${items.length ? '<button class="btn" id="trash-empty">Papierkorb leeren</button>' : ''}`;
+      wrap.querySelectorAll('[data-restore]').forEach(b => b.addEventListener('click', () => { store.restore(b.closest('.trash-row').dataset.id); onDataChange(); draw(); showToast('Chat zurückgeholt'); }));
+      wrap.querySelectorAll('[data-purge]').forEach(b => b.addEventListener('click', () => { store.purge(b.closest('.trash-row').dataset.id); onDataChange(); draw(); }));
+      wrap.querySelector('#trash-empty')?.addEventListener('click', () => { if (confirm(`${items.length} Chats endgültig löschen?`)) { store.emptyTrash(); onDataChange(); draw(); } });
+    };
+    draw();
+    return wrap;
+  }
+
+  // ---------- Abgleich zwischen Geräten ----------
+  function renderSync() {
+    const wrap = el('div');
+    const ago = (t) => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'gerade eben' : m < 60 ? `vor ${m} Min` : `vor ${Math.round(m / 60)} Std`; };
+    const draw = () => {
+      if (!sync) { wrap.innerHTML = '<div class="note warn">Der Abgleich ist auf diesem Server abgeschaltet.</div>'; return; }
+      const st = sync.engine.status();
+      const label = st.state === 'ok' ? `Zuletzt ${ago(st.at)}: ${st.message}` : st.state === 'läuft' ? 'Gleicht ab …' : st.state === 'fehler' ? `Fehler: ${st.message}` : 'Aus';
+      wrap.innerHTML = `<div class="note"><b>Chats und Projekte zwischen Geräten abgleichen.</b> Handy und Computer zeigen dann denselben Stand. Die neuere Änderung gewinnt, gelöschte Chats wandern in den Papierkorb aller Geräte.</div>
+        <div class="settings-row"><div><div class="settings-row-label">Abgleich einschalten</div><div class="settings-row-sub">${escapeHtml(label)}</div></div><div id="sync-switch"></div></div>
+        <div class="settings-row-sub">Abgeglichen werden Texte, Projekte mit Dateien, Zusammenfassungen und Zweige. Bilder und Dateivorschauen bleiben auf dem Gerät. Die Daten liegen auf deinem Server (<code>data/sync</code>), der Betreiber des Servers kann sie lesen.</div>
+        <div class="pro-actions"><button class="btn" id="sync-now" ${settings.sync ? '' : 'disabled'}>Jetzt abgleichen</button><button class="btn" id="sync-wipe">Abgleich-Daten vom Server löschen</button></div>`;
+      wrap.querySelector('#sync-switch').appendChild(switchControl(Boolean(settings.sync), async (on) => {
+        if (on && !confirm('Deine Chats und Projekte (ohne Bilder) werden auf deinem Server gespeichert, damit andere Geräte sie sehen. Der Betreiber des Servers kann sie lesen. Einschalten?')) { draw(); return; }
+        settings.sync = on; save();
+        if (on) { sync.engine.start(); await sync.engine.run(); } else sync.engine.stop();
+        draw();
+      }));
+      wrap.querySelector('#sync-now').addEventListener('click', async () => { await sync.engine.run(); onDataChange(); draw(); });
+      wrap.querySelector('#sync-wipe').addEventListener('click', async () => {
+        if (!confirm('Alle abgeglichenen Daten dieses Kontos vom Server löschen? Auf deinen Geräten bleiben die Chats erhalten.')) return;
+        try { await api.syncWipe(); settings.sync = false; save(); sync.engine.stop(); sync.engine.reset(); showToast('Abgleich-Daten gelöscht'); } catch (e) { showToast(e.message); }
+        draw();
+      });
+    };
+    draw();
+    return wrap;
+  }
 
   // ---------- Allgemein ----------
   function renderGeneral() {
@@ -413,7 +463,7 @@ export function openSettingsModal({ store, initialTab, authRequired, user, owner
   function renderAbout() {
     const wrap = el('div');
     wrap.innerHTML = `
-      <div class="note"><b>AI Core 3.5</b> · deine eigene AI-Chat-Plattform von OrbitLabs.<br>Lokale Modelle über Ollama, optional DeepSeek V4.1 Flash in der Cloud.</div>
+      <div class="note"><b>AI Core 4.0</b> · deine eigene AI-Chat-Plattform von OrbitLabs.<br>Lokale Modelle über Ollama, optional DeepSeek V4.1 Flash in der Cloud.</div>
       <div class="group-title">Tastenkürzel</div>
       <div class="settings-row-sub" style="line-height:2">
         <kbd>Enter</kbd> senden · <kbd>Shift</kbd>+<kbd>Enter</kbd> neue Zeile<br>
