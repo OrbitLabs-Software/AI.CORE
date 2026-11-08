@@ -19,14 +19,17 @@ import { createShare, readShare, deleteShare, shareEnabled } from './share.js';
 import { generateImage, imageEnabled } from './image.js';
 import { startVideo, videoStatus, videoFile, videoEnabled } from './video.js';
 import { planStatus, reserve, refund, grantPro, revokePro, proInfo, redeemCode, codesEnabled } from './plan.js';
-import { webSearch, searchEnabled } from './search.js';
+import { webSearch, searchEnabled, readPage } from './search.js';
+import * as library from './library.js';
+import { startPull, pullStatus, cancelPull, deleteModel, SUGGESTED, diskFree } from './models.js';
+import { getLogs } from './logbuffer.js';
 import { isOwnerSession } from './owner.js';
 import { syncEnabled, pull as syncPull, push as syncPush, prune as syncPrune, wipe as syncWipe } from './sync.js';
 import { record, snapshot } from './metrics.js';
 import { parseApiKeys, checkApiKey, errorBody, toInternal, createThinkFilter, completionId, chunk, completion, modelList, estimateTokens } from './openai.js';
 import { stripeEnabled, createCheckout, confirmCheckout, subscriptionState, createPortal } from './stripe.js';
 
-export const VERSION = '4.0.0';
+export const VERSION = '5.0.0';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024, files: 1 } });
 
@@ -58,7 +61,7 @@ router.get('/config', (req, res) => {
   const cfg = getConfig();
   res.json({
     version: VERSION, provider: cfg.provider,
-    features: { search: searchEnabled(), image: imageEnabled(), video: videoEnabled(), share: shareEnabled(), pro: stripeEnabled() || codesEnabled(), api: apiKeys().length > 0, sync: syncEnabled() },
+    features: { search: searchEnabled(), image: imageEnabled(), video: videoEnabled(), share: shareEnabled(), pro: stripeEnabled() || codesEnabled(), api: apiKeys().length > 0, sync: syncEnabled(), library: library.libraryEnabled(), read: searchEnabled() },
     legal: legalLinks(), owner: isAuthenticated(req) && isOwner(req),
     ...authInfo(req),
   });
@@ -381,6 +384,39 @@ router.post('/chat/stream', chatLimiter, async (req, res) => {
   }
 });
 
+// ---------- Links lesen ----------
+router.post('/read', searchLimiter, async (req, res) => {
+  if (!searchEnabled()) return res.status(403).json({ error: 'Das Lesen von Links ist abgeschaltet.' });
+  record('search', memKey(req));
+  try { res.json(await readPage(String(req.body?.url || '').slice(0, 2000))); }
+  catch (e) { res.status(502).json({ error: `Der Link konnte nicht gelesen werden: ${e.message}` }); }
+});
+
+// ---------- Bibliothek ----------
+const libLimiter = rateLimit({ windowMs: 60 * 1000, max: 60, message: 'Zu viele Anfragen. Bitte kurz warten.' });
+const libOff = (res) => res.status(403).json({ error: 'Die Bibliothek ist auf dem Server abgeschaltet.' });
+router.get('/library', libLimiter, (req, res) => {
+  if (!library.libraryEnabled()) return libOff(res);
+  const key = accountOf(req).key;
+  res.json({ docs: library.list(key), ...library.stats(key) });
+});
+router.post('/library', libLimiter, (req, res) => {
+  if (!library.libraryEnabled()) return libOff(res);
+  const r = library.add(accountOf(req).key, req.body?.name, req.body?.text);
+  if (r.error) return res.status(r.status).json({ error: r.error });
+  res.status(201).json(r);
+});
+router.delete('/library/:id', libLimiter, (req, res) => {
+  if (!library.libraryEnabled()) return libOff(res);
+  const ok = library.remove(accountOf(req).key, String(req.params.id));
+  res.status(ok ? 200 : 404).json({ ok });
+});
+router.post('/library/search', libLimiter, (req, res) => {
+  if (!library.libraryEnabled()) return libOff(res);
+  const budget = Math.min(12000, Math.max(500, Number(req.body?.budget) || 4000));
+  res.json(library.search(accountOf(req).key, String(req.body?.query || '').slice(0, 500), budget));
+});
+
 // ---------- Geräte-Abgleich ----------
 const syncLimiter = rateLimit({ windowMs: 60 * 1000, max: 90, message: 'Zu viele Abgleiche. Bitte kurz warten.' });
 const syncOff = (res) => res.status(403).json({ error: 'Der Abgleich ist auf dem Server abgeschaltet.' });
@@ -428,6 +464,35 @@ router.get('/admin/status', lightLimiter, async (req, res) => {
     trustProxy: String(process.env.TRUST_PROXY || 'loopback'),
     activeChats, metrics: snapshot(14),
   });
+});
+
+// ---------- Modelle und Meldungen verwalten (nur Besitzer) ----------
+const ownerOnly = (req, res) => { if (isOwner(req)) return true; res.status(403).json({ error: 'Nur für den Besitzer.' }); return false; };
+router.get('/admin/models', lightLimiter, async (req, res) => {
+  if (!ownerOnly(req, res)) return;
+  const cfg = getConfig();
+  const { models, status } = await listAllModels(cfg);
+  res.json({
+    enabled: Boolean(cfg.ollamaEnabled), reachable: status.ollama?.reachable ?? false,
+    installed: models.filter(m => m.provider === 'ollama').map(m => ({ name: m.label, size: m.size || 0, loaded: Boolean(m.loaded) })),
+    suggested: SUGGESTED, pull: pullStatus(), disk: diskFree(),
+  });
+});
+router.post('/admin/models/pull', lightLimiter, (req, res) => {
+  if (!ownerOnly(req, res)) return;
+  if (!getConfig().ollamaEnabled) return res.status(400).json({ error: 'Ollama ist nicht eingerichtet.' });
+  try { res.status(202).json(startPull(String(req.body?.name || '').trim(), getConfig())); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+});
+router.delete('/admin/models/pull', lightLimiter, (req, res) => { if (ownerOnly(req, res)) res.json({ ok: cancelPull() }); });
+router.post('/admin/models/delete', lightLimiter, async (req, res) => {
+  if (!ownerOnly(req, res)) return;
+  try { await deleteModel(String(req.body?.name || '').trim(), getConfig()); res.json({ ok: true }); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+});
+router.get('/admin/logs', lightLimiter, (req, res) => {
+  if (!ownerOnly(req, res)) return;
+  res.json({ logs: getLogs({ level: ['all', 'warn', 'error'].includes(req.query.level) ? req.query.level : 'all', limit: Number(req.query.limit) || 100 }) });
 });
 
 // ---------- OpenAI-kompatible Schnittstelle (/v1) für andere Programme ----------

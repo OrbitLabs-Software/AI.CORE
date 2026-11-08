@@ -51,7 +51,7 @@ export function htmlToText(html, max = 4000) {
 }
 const strip = (s) => decode(String(s || '').replace(/<[^>]+>/g, '')).replace(/\s+/g, ' ').trim();
 
-export async function fetchPageText(url, max = 3500) {
+async function fetchPage(url) {
   let current = await assertPublicUrl(url);
   for (let hop = 0; hop < 4; hop++) {
     const res = await fetch(current, { redirect: 'manual', headers: { 'User-Agent': UA, Accept: 'text/html,text/plain;q=0.9' }, signal: AbortSignal.timeout(8000) });
@@ -72,10 +72,23 @@ export async function fetchPageText(url, max = 3500) {
       chunks.push(value); size += value.length;
     }
     reader.cancel().catch(() => {});
-    const text = new TextDecoder().decode(Buffer.concat(chunks));
-    return /html/i.test(type) ? htmlToText(text, max) : text.replace(/\s+/g, ' ').slice(0, max);
+    return { url: current.href ?? String(current), html: /html/i.test(type), raw: new TextDecoder().decode(Buffer.concat(chunks)) };
   }
   throw new Error('Zu viele Weiterleitungen');
+}
+
+export async function fetchPageText(url, max = 3500) {
+  const p = await fetchPage(url);
+  return p.html ? htmlToText(p.raw, max) : p.raw.replace(/\s+/g, ' ').slice(0, max);
+}
+
+/** Eine Seite lesen: Adresse, Titel und Text (für „Link in der Nachricht lesen“). */
+export async function readPage(url, max = 6000) {
+  const p = await fetchPage(url);
+  const title = p.html ? strip((/<title[^>]*>([\s\S]*?)<\/title>/i.exec(p.raw) || [])[1] || '') : '';
+  const text = p.html ? htmlToText(p.raw, max) : p.raw.replace(/\s+/g, ' ').slice(0, max);
+  if (text.length < 40) throw new Error('Auf der Seite wurde kaum Text gefunden');
+  return { url: p.url, title: title.slice(0, 160) || new URL(p.url).hostname, text };
 }
 
 // ---------- Anbieter ----------

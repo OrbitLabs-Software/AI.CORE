@@ -4,6 +4,10 @@
 
 export const DEFAULT_SERVER = 'https://obitlabs.tailc8dd2c.ts.net';   // Tailscale Funnel; im Heimnetz geht auch http://192.168.1.190:3000
 
+// Adressen, die beim Start automatisch ausprobiert werden (zuerst die schnelle im Heimnetz, dann die von unterwegs).
+export const SERVER_CANDIDATES = ['http://192.168.1.190:3000', DEFAULT_SERVER];
+let detected = '';
+
 const KEY = 'aicore_server';
 const read = () => { try { return localStorage.getItem(KEY) || ''; } catch { return ''; } };
 
@@ -18,7 +22,7 @@ const servedByServer = () => location.protocol !== 'file:' && !/\.github\.io$/i.
 export function serverBase() {
   const saved = read();
   if (saved) return saved.replace(/\/+$/, '');
-  return servedByServer() ? '' : DEFAULT_SERVER;
+  return servedByServer() ? '' : (detected || DEFAULT_SERVER);
 }
 
 export const isCrossOrigin = () => serverBase() !== '';
@@ -30,6 +34,18 @@ export function normalizeServer(input) {
   if (!v) return '';
   if (!/^https?:\/\//i.test(v)) v = (isPrivateHost(v.split(/[:/]/)[0]) || /^\d/.test(v) ? 'http://' : 'https://') + v;
   try { const u = new URL(v); return u.origin; } catch { return null; }
+}
+
+/** Probiert die bekannten Adressen gleichzeitig durch und nimmt die erste, die als AI-Core-Server antwortet. */
+export async function findServer(timeoutMs = 3500) {
+  if (read() || servedByServer()) return '';
+  const tries = SERVER_CANDIDATES.map(async (base) => {
+    const res = await fetch(`${base}/api/config`, { credentials: 'omit', signal: AbortSignal.timeout(timeoutMs), ...(isPrivateHost(new URL(base).hostname) ? { targetAddressSpace: 'local' } : {}) });
+    if (!res.ok || typeof (await res.json()).authRequired !== 'boolean') throw new Error('kein AI-Core-Server');
+    return base;
+  });
+  try { detected = await Promise.any(tries); } catch { detected = ''; }
+  return detected;
 }
 
 export function setServerBase(url) {

@@ -1,6 +1,7 @@
 // artifacts.js — das Panel rechts: Vorschau (Sandbox) und Code zu einem Code-Block.
 
 import { api } from './api.js';
+import { mermaidPage } from './mermaid.js';
 import { showToast, highlight, isPreviewable } from './ui.js';
 
 export function createArtifactPanel({ onToggle = () => {} } = {}) {
@@ -27,8 +28,9 @@ export function createArtifactPanel({ onToggle = () => {} } = {}) {
     const mine = ++token;
     empty.hidden = true;
     try {
+      const isMm = state.lang === 'mermaid';
       const kind = state.lang === 'svg' ? 'svg' : 'html';
-      const p = await api.preview(kind, state.previewCode ?? state.code);
+      const p = await api.preview(kind, isMm ? mermaidPage(state.code) : (state.previewCode ?? state.code));
       if (mine !== token) return;
       state.url = p.url || null;
       if (p.srcdoc) { frame.removeAttribute('src'); frame.srcdoc = p.srcdoc; } else { frame.removeAttribute('srcdoc'); frame.src = p.url; }

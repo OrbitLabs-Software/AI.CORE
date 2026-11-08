@@ -141,6 +141,18 @@ export const api = {
     return res.ok;
   },
 
+  // ---------- Links, Bibliothek, Modelle, Meldungen ----------
+  async readUrl(url) { const res = await jsonPost('/api/read', { url }); if (!res.ok) throw new ApiError(await errorMessage(res), res.status); return res.json(); },
+  async libraryList() { const res = await request('/api/library'); if (!res.ok) throw new ApiError(await errorMessage(res), res.status); return res.json(); },
+  async libraryAdd(name, text) { const res = await jsonPost('/api/library', { name, text }); if (!res.ok) throw new ApiError(await errorMessage(res), res.status); return res.json(); },
+  async libraryRemove(id) { const res = await request(`/api/library/${encodeURIComponent(id)}`, { method: 'DELETE' }); if (!res.ok) throw new ApiError(await errorMessage(res), res.status); },
+  async librarySearch(query, budget) { const res = await jsonPost('/api/library/search', { query, budget }); if (!res.ok) throw new ApiError(await errorMessage(res), res.status); return res.json(); },
+  async adminModels() { const res = await request('/api/admin/models'); if (!res.ok) throw new ApiError(await errorMessage(res), res.status); return res.json(); },
+  async adminPull(name) { const res = await jsonPost('/api/admin/models/pull', { name }); if (!res.ok) throw new ApiError(await errorMessage(res), res.status); return res.json(); },
+  async adminPullCancel() { await request('/api/admin/models/pull', { method: 'DELETE' }); },
+  async adminDeleteModel(name) { const res = await jsonPost('/api/admin/models/delete', { name }); if (!res.ok) throw new ApiError(await errorMessage(res), res.status); },
+  async adminLogs(level = 'all') { const res = await request(`/api/admin/logs?level=${encodeURIComponent(level)}&limit=120`); if (!res.ok) throw new ApiError(await errorMessage(res), res.status); return (await res.json()).logs; },
+
   // ---------- Geräte-Abgleich ----------
   async syncPull(since = 0) { const res = await request(`/api/sync?since=${encodeURIComponent(since)}`); if (!res.ok) throw new ApiError(await errorMessage(res), res.status); return res.json(); },
   async syncPush(body) { const res = await jsonPost('/api/sync', body); if (!res.ok) throw new ApiError(await errorMessage(res), res.status); return res.json(); },

@@ -15,12 +15,13 @@ import { renderFilePreviewRow } from '../components/filePreview.js';
 import { initComposer } from '../components/composer.js';
 import { openSettingsModal } from './settings.js';
 import { mountLogin, mountConnect } from './login.js';
-import { isCrossOrigin } from './config.js';
+import { isCrossOrigin, findServer } from './config.js';
 import { STYLES, buildSystem } from './styles.js';
 import { createProjectStore, openProjectDialog } from './projects.js';
 import { bundleHtml } from './bundle.js';
 import { shareIdFromHash, showShared } from './sharedView.js';
-import { buildSearchContext } from './websearch.js';
+import { buildSearchContext, extractUrls, buildLinkContext, buildLibraryContext, combineContexts } from './websearch.js';
+import { markdownToDocx, DOCX_MIME } from './docx.js';
 import { runJs } from './runner.js';
 import { takeBranch, applyBranch, switchBranch } from './branches.js';
 import { applyAppearance, watchSystemTheme, resolveTheme } from './appearance.js';
@@ -242,6 +243,7 @@ function messageHandlers(chat) {
     speakingId,
     onCopy: (m) => { navigator.clipboard?.writeText(m.content); showToast('Nachricht kopiert'); },
     onRegenerate: (m) => regenerate(chat.id, m),
+    onFollowup: (q) => { if (!busy) sendMessage(q); },
     onEdit: (m) => editMessage(chat.id, m),
     onAnalyze: (a) => a?.text && openDataDialog({ name: a.name, text: a.text }),
     onBranch: (m, d) => { if (busy) return showToast('Bitte warten, die KI antwortet gerade.'); if (switchBranch(chat, m.id, d)) { store.save(); renderMessages({ keepScroll: true }); } },
@@ -482,11 +484,25 @@ async function runAssistantTurn(chatId, carry = null) {
         catch (e) { showToast(e.message || 'Die Websuche hat nicht geklappt'); }
       }
     }
-    if (searchCtx) assistant.sources = searchCtx.sources;
+    let linkCtx = null, libCtx = null;
+    if (settings.readLinks !== false && appConfig.features?.read !== false) {
+      const urls = extractUrls(q, 2);
+      if (urls.length) {
+        const pages = [];
+        for (const u of urls) { try { pages.push(await api.readUrl(u)); } catch (e) { showToast(e.message || 'Link konnte nicht gelesen werden'); } }
+        linkCtx = buildLinkContext(pages, Math.round(ctxChars() * 0.5));
+      }
+    }
+    if (settings.library === 'on' && appConfig.features?.library !== false && q.length >= 3) {
+      try { libCtx = buildLibraryContext((await api.librarySearch(q.slice(0, 500), Math.round(ctxChars() * 0.5))).passages, Math.round(ctxChars() * 0.5)); }
+      catch (e) { showToast(e.message || 'Die Bibliothek ist nicht erreichbar'); }
+    }
+    const ctx = combineContexts([searchCtx, linkCtx, libCtx], Math.round(ctxChars() * 0.75));
+    if (ctx) assistant.sources = ctx.sources;
     const stream = api.streamChat({
       messages: buildHistory(chat),
       model: currentModel(),
-      system: buildSystem(role.prompt, settings, projects.get(chat.projectId), { query: recentUserText(chat), budget: ctxChars(), search: searchCtx?.block, summary: chat.summary?.text }),
+      system: buildSystem(role.prompt, settings, projects.get(chat.projectId), { query: recentUserText(chat), budget: ctxChars(), search: ctx?.block, summary: chat.summary?.text }),
       temperature: settings.temperature ?? undefined,
       memory: settings.useMemory,
       signal: abortController.signal,
@@ -732,9 +748,9 @@ function exportCurrent() {
 }
 
 // ---------- Modell ohne Chat-Anzeige fragen (für Zusammenfassungen) ----------
-async function askModel(prompt, system) {
+async function askModel(prompt, system, signal = abortController?.signal) {
   let text = '';
-  for await (const ev of api.streamChat({ messages: [{ role: 'user', content: prompt }], model: currentModel(), system, temperature: 0.2, memory: false, signal: abortController?.signal })) {
+  for await (const ev of api.streamChat({ messages: [{ role: 'user', content: prompt }], model: currentModel(), system, temperature: 0.2, memory: false, signal })) {
     if (ev.delta) text += ev.delta;
   }
   return text.replace(/<think>[\s\S]*?(<\/think>|$)/g, '').trim();
@@ -780,7 +796,10 @@ function openCommandPalette() {
     { label: 'Nutzung ansehen', hint: 'Einstellungen', run: () => openSettings('stats') },
     { label: 'Papierkorb', hint: 'Einstellungen', run: () => openSettings('trash') },
     { label: 'Abgleich zwischen Geräten', hint: 'Einstellungen', run: () => openSettings('sync') },
-    { label: 'Was ist neu in 4.0', hint: '/neu', run: showWhatsNew },
+    { label: 'Was ist neu in 5.0', hint: '/neu', run: showWhatsNew },
+    { label: 'Bibliothek (Dokumente)', hint: '/bibliothek', run: () => openSettings('library') },
+    { label: 'Chat als Word speichern', hint: '/wordchat', run: exportChatWord },
+    ...(appConfig.owner ? [{ label: 'Modelle verwalten', hint: 'Einstellungen', run: () => openSettings('serverModels') }] : []),
     { label: 'AI Core Pro', hint: 'Einstellungen', run: () => openSettings('pro') },
     ...(appConfig.owner ? [{ label: 'Server-Übersicht', hint: 'Einstellungen', run: () => openSettings('server') }] : []),
     { label: 'Tastenkürzel und Hilfe', hint: '?', run: () => openSettings('about') },
@@ -852,12 +871,56 @@ function openTemplates() {
 }
 
 // ---------- Websuche-Schalter ----------
+const librarySelect = $('library-select');
+librarySelect.value = settings.library === 'on' ? 'on' : 'off';
+librarySelect.addEventListener('change', () => {
+  settings.library = librarySelect.value; storage.saveSettings(settings);
+  if (settings.library === 'on') showToast('Bibliothek an: passende Abschnitte deiner Dokumente gehen mit in die Antwort.');
+});
 const searchSelect = $('search-select');
 searchSelect.value = settings.search || 'off';
 searchSelect.addEventListener('change', () => {
   settings.search = searchSelect.value; storage.saveSettings(settings);
   if (settings.search !== 'off') showToast(settings.search === 'deep' ? 'Tiefe Recherche: die ersten Seiten werden gelesen (dauert länger).' : 'Websuche an: die Frage geht an einen Suchanbieter.');
 });
+
+// ---------- KI-Extras: Titel und Folgefragen (optional, kosten zusätzliche Rechenzeit) ----------
+let extrasAbort = null;
+const cleanLine = (s) => s.replace(/^[\s\-*•\d.)]+/, '').replace(/^["„“']+|["“”']+$/g, '').trim();
+const autoTitleOf = (q) => q.slice(0, 48) + (q.length > 48 ? '…' : '');
+window.addEventListener('aicore:turn-done', (e) => { if (e.detail?.text && (settings.autoTitle || settings.followups)) setTimeout(runExtras, 250); });
+
+async function runExtras() {
+  const chat = store.getActive();
+  if (!chat || busy) return;
+  const msgs = chat.messages.filter(m => !m.media);
+  const lastAi = chat.messages.at(-1);
+  if (lastAi?.role !== 'assistant' || !lastAi.content) return;
+  const lastQ = [...msgs].reverse().find(m => m.role === 'user')?.content || '';
+  const brief = `Frage: ${lastQ.slice(0, 400)}\n\nAntwort: ${lastAi.content.replace(/<think>[\s\S]*?(<\/think>|$)/g, '').slice(0, 900)}`;
+  extrasAbort?.abort(); extrasAbort = new AbortController();
+  const { signal } = extrasAbort;
+  try {
+    if (settings.autoTitle && msgs.length === 2 && chat.title === autoTitleOf(msgs[0].content)) {
+      const t = cleanLine(await askModel(`Gib dem folgenden Gespräch einen kurzen Titel mit höchstens fünf Wörtern. Antworte nur mit dem Titel, ohne Anführungszeichen und ohne Punkt.\n\n${brief}`, 'Du vergibst kurze, treffende Titel auf Deutsch.', signal)).slice(0, 60);
+      if (t.length >= 3 && !signal.aborted) { store.rename(chat.id, t); renderSidebar(); titleEl.textContent = t; }
+    }
+    if (settings.followups && !signal.aborted) {
+      const lines = (await askModel(`Schlage drei kurze Folgefragen vor, die der Nutzer als Nächstes stellen könnte. Eine pro Zeile, ohne Nummerierung, jeweils höchstens zehn Wörter.\n\n${brief}`, 'Du schlägst hilfreiche Folgefragen auf Deutsch vor.', signal))
+        .split('\n').map(cleanLine).filter(l => l.length > 6 && l.length < 120 && l.endsWith('?')).slice(0, 3);
+      if (lines.length && !signal.aborted && store.getActive()?.id === chat.id && chat.messages.at(-1) === lastAi) { lastAi.followups = lines; store.save(); renderMessages({ keepScroll: true }); }
+    }
+  } catch { /* Extras sind nie wichtig genug für eine Fehlermeldung */ }
+}
+
+// ---------- Ganzer Chat als Word-Datei ----------
+function exportChatWord() {
+  const chat = store.getActive();
+  if (!chat?.messages.some(m => !m.media)) return showToast('Der Chat ist leer.');
+  const clean = (t) => t.replace(/<think>[\s\S]*?(<\/think>|$)/g, '').trim();
+  const md = `# ${chat.title}\n\n${chat.messages.filter(m => !m.media).map(m => `## ${m.role === 'user' ? 'Du' : 'AI Core'}\n\n${clean(m.content)}`).join('\n\n')}`;
+  downloadFile(`${(chat.title || 'chat').replace(/[^\wäöüÄÖÜß -]+/g, '').trim().slice(0, 40) || 'chat'}.docx`, markdownToDocx(md), DOCX_MIME);
+}
 
 // ---------- Sprachmodus ----------
 const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -1044,7 +1107,9 @@ function importShared(data) {
 $('share-btn').addEventListener('click', shareCurrent);
 
 const COMMANDS = [
-  { name: 'neu', hint: 'Was ist neu in AI Core 4.0', run: showWhatsNew },
+  { name: 'neu', hint: 'Was ist neu in AI Core 5.0', run: showWhatsNew },
+  { name: 'bibliothek', hint: 'Deine Dokumente verwalten', run: () => openSettings('library') },
+  { name: 'wordchat', hint: 'Ganzen Chat als Word-Datei speichern', run: exportChatWord },
   { name: 'papierkorb', hint: 'Gelöschte Chats ansehen und zurückholen', run: () => openSettings('trash') },
   { name: 'abgleich', hint: 'Chats zwischen Geräten abgleichen', run: () => openSettings('sync') },
   { name: 'installieren', hint: 'AI Core als App auf dem Gerät installieren', run: installApp },
@@ -1323,7 +1388,7 @@ setupToolsMenu([
   { label: 'Verlauf zusammenfassen', hint: '/komprimieren', run: compressChat },
 ]);
 const renderChips = setupChips();
-setupMoreMenu([{ label: 'Befehlspalette', run: () => openCommandPalette() }, { label: 'Einstellungen', run: () => openSettings('general') }]);
+setupMoreMenu([{ label: 'Chat als Word speichern', run: exportChatWord }, { label: 'Befehlspalette', run: () => openCommandPalette() }, { label: 'Einstellungen', run: () => openSettings('general') }]);
 renderChips();
 
 // ---------- Start ----------
@@ -1359,6 +1424,7 @@ function confirmProReturn() {
     history.replaceState(null, '', location.pathname + location.search);
   }
   try {
+    await findServer();
     applyConfig(await api.config());
   } catch (e) {
     health = null;

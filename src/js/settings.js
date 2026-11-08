@@ -19,10 +19,11 @@ export function openSettingsModal({ store, sync = null, initialTab, authRequired
   const settings = storage.getSettings();
   const save = () => { storage.saveSettings(settings); onSettingsChange?.(); };
 
-  const GROUPS = { general: 'Persönlich', memory: 'Persönlich', roles: 'Persönlich', models: 'KI', pro: 'Konto und Daten', sync: 'Konto und Daten', data: 'Konto und Daten', trash: 'Konto und Daten', stats: 'Übersicht', server: 'Übersicht', about: 'Übersicht' };
+  const GROUPS = { general: 'Persönlich', memory: 'Persönlich', library: 'Persönlich', roles: 'Persönlich', models: 'KI', serverModels: 'Übersicht', pro: 'Konto und Daten', sync: 'Konto und Daten', data: 'Konto und Daten', trash: 'Konto und Daten', stats: 'Übersicht', server: 'Übersicht', about: 'Übersicht' };
   const defs = {
     general: { label: 'Allgemein', render: renderGeneral },
     memory: { label: 'Erinnerungen', render: renderMemory },
+    library: { label: 'Bibliothek', render: renderLibrary },
     roles: { label: 'Rollen', render: renderRoles },
     models: { label: 'Modelle', render: renderModels },
     pro: { label: 'Pro', render: renderPro },
@@ -30,7 +31,7 @@ export function openSettingsModal({ store, sync = null, initialTab, authRequired
     data: { label: 'Daten', render: renderData },
     trash: { label: 'Papierkorb', render: renderTrash },
     stats: { label: 'Nutzung', render: renderStats },
-    ...(owner ? { server: { label: 'Server', render: renderServer } } : {}),
+    ...(owner ? { serverModels: { label: 'Modelle verwalten', render: renderServerModels }, server: { label: 'Server', render: renderServer } } : {}),
     about: { label: 'Über', render: renderAbout },
   };
   openModal({
@@ -38,6 +39,81 @@ export function openSettingsModal({ store, sync = null, initialTab, authRequired
     initialTab,
     tabs: Object.fromEntries(Object.entries(defs).map(([k, v]) => [k, { ...v, group: GROUPS[k] }])),
   });
+
+  // ---------- Bibliothek ----------
+  function renderLibrary() {
+    const wrap = el('div');
+    wrap.innerHTML = '<div class="note">Lade …</div>';
+    const draw = (lib) => {
+      wrap.innerHTML = `<div class="note"><b>Deine Dokumente, in jedem Chat durchsuchbar.</b> Lade Handbücher, Verträge oder Notizen einmal hoch. Schaltest du im Werkzeug-Menü „Bibliothek“ ein, gehen die passenden Abschnitte mit in die Antwort, mit Quellenangabe. Die Dokumente liegen auf deinem Server.</div>
+        <div class="settings-row-sub">${lib.count} Dokumente · ${formatBytes(lib.chars)} Text von maximal ${formatBytes(lib.maxChars)}</div>
+        <input type="file" id="lib-file" multiple hidden accept=".pdf,.docx,.txt,.md,.csv,.tsv,.json,.html,.xlsx">
+        <div class="pro-actions"><button class="btn primary" id="lib-add"><b>Dokumente hinzufügen</b></button></div>
+        ${lib.docs.length ? lib.docs.map(d => `<div class="trash-row" data-id="${d.id}"><div><b>${escapeHtml(d.name)}</b><small>${formatBytes(d.chars)} Text · ${new Date(d.addedAt).toLocaleDateString('de-AT')}</small></div><div><button class="btn" data-del>Löschen</button></div></div>`).join('') : '<div class="settings-row-sub">Noch keine Dokumente.</div>'}`;
+      const input = wrap.querySelector('#lib-file');
+      wrap.querySelector('#lib-add').addEventListener('click', () => input.click());
+      input.addEventListener('change', async () => {
+        wrap.querySelector('#lib-add').disabled = true;
+        for (const f of input.files) {
+          try {
+            const data = await api.upload(f);
+            if (!data.extractedText) { showToast(`„${f.name}“: ${data.note || 'kein Text gefunden'}`); continue; }
+            const r = await api.libraryAdd(f.name, data.extractedText);
+            showToast(r.truncated ? `„${f.name}“ hinzugefügt, nur der Anfang (400 000 Zeichen)` : `„${f.name}“ hinzugefügt`);
+          } catch (e) { showToast(e.message || 'Hochladen fehlgeschlagen'); }
+        }
+        load();
+      });
+      wrap.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', async () => {
+        if (!confirm('Dieses Dokument aus der Bibliothek löschen?')) return;
+        try { await api.libraryRemove(b.closest('.trash-row').dataset.id); } catch (e) { showToast(e.message); }
+        load();
+      }));
+    };
+    const load = () => api.libraryList().then(draw).catch(e => { wrap.innerHTML = `<div class="note warn">${escapeHtml(e.message || 'Bibliothek nicht erreichbar')}</div>`; });
+    load();
+    return wrap;
+  }
+
+  // ---------- Modelle verwalten (nur Besitzer) ----------
+  function renderServerModels() {
+    const wrap = el('div');
+    wrap.innerHTML = '<div class="note">Lade …</div>';
+    let timer = null, notified = false;
+    const gb = (n) => (n > 1e9 ? `${(n / 1e9).toFixed(1)} GB` : `${Math.round(n / 1e6)} MB`);
+    const draw = (m) => {
+      const running = m.pull && !m.pull.done;
+      wrap.innerHTML = `${!m.enabled ? '<div class="note warn">Ollama ist auf diesem Server nicht eingerichtet.</div>' : !m.reachable ? '<div class="note warn">Ollama antwortet nicht. Läuft der Dienst?</div>' : ''}
+        <div class="note">Modelle laufen auf dem Tiny und brauchen Arbeitsspeicher und Platz. ${m.disk ? `Frei auf der Platte: <b>${gb(m.disk.freeBytes)}</b> von ${gb(m.disk.totalBytes)}.` : ''}</div>
+        <div class="group-title">Installiert</div>
+        ${m.installed.length ? m.installed.map(x => `<div class="trash-row" data-name="${escapeHtml(x.name)}"><div><b>${escapeHtml(x.name)}</b><small>${gb(x.size)}${x.loaded ? ' · im Speicher' : ''}</small></div><div><button class="btn" data-del>Löschen</button></div></div>`).join('') : '<div class="settings-row-sub">Keine Modelle installiert.</div>'}
+        <div class="group-title">Modell laden</div>
+        <div class="pro-code"><input class="text-input" id="mdl-name" placeholder="z. B. llama3.2:3b" autocomplete="off" spellcheck="false" ${running ? 'disabled' : ''}><button class="btn primary" id="mdl-pull" ${running || !m.reachable ? 'disabled' : ''}><b>Laden</b></button></div>
+        <div class="pro-actions">${m.suggested.map(s => `<button class="btn" data-suggest="${escapeHtml(s.name)}" title="${escapeHtml(s.note)}">${escapeHtml(s.name)}</button>`).join('')}</div>
+        ${m.pull ? `<div class="pro-use"><div class="pro-use-head"><span>${escapeHtml(m.pull.name)}: ${m.pull.error ? escapeHtml(m.pull.error) : escapeHtml(m.pull.status)}</span><b>${m.pull.percent} %</b></div><div class="pro-bar"><i style="width:${m.pull.percent}%"></i></div>${running ? '<button class="btn" id="mdl-cancel">Abbrechen</button>' : ''}</div>` : ''}
+        <div class="settings-row-sub">Die Vorschläge sind Richtwerte. Andere Modelle findest du auf ollama.com/library.</div>`;
+      wrap.querySelectorAll('[data-suggest]').forEach(b => b.addEventListener('click', () => { wrap.querySelector('#mdl-name').value = b.dataset.suggest; }));
+      wrap.querySelector('#mdl-pull')?.addEventListener('click', async () => {
+        const name = wrap.querySelector('#mdl-name').value.trim();
+        if (!name) return wrap.querySelector('#mdl-name').focus();
+        try { await api.adminPull(name); } catch (e) { return showToast(e.message); }
+        load();
+      });
+      wrap.querySelector('#mdl-cancel')?.addEventListener('click', async () => { await api.adminPullCancel(); load(); });
+      wrap.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', async () => {
+        const name = b.closest('.trash-row').dataset.name;
+        if (!confirm(`Modell „${name}“ vom Tiny löschen?`)) return;
+        try { await api.adminDeleteModel(name); onModelsChange(); } catch (e) { showToast(e.message); }
+        load();
+      }));
+      clearTimeout(timer);
+      if (running) timer = setTimeout(load, 1500);
+      else if (m.pull?.done && !m.pull.error && !notified) { notified = true; showToast(`${m.pull.name} ist geladen`); onModelsChange(); }
+    };
+    const load = () => api.adminModels().then(draw).catch(e => { wrap.innerHTML = `<div class="note warn">${escapeHtml(e.message || 'Nicht erreichbar')}</div>`; });
+    load();
+    return wrap;
+  }
 
   // ---------- Papierkorb ----------
   function renderTrash() {
@@ -104,6 +180,9 @@ export function openSettingsModal({ store, sync = null, initialTab, authRequired
       return s;
     };
     wrap.appendChild(settingsRow({ label: 'Design', sub: '„System“ folgt dem Gerät', control: choice('theme', [['light', 'Hell'], ['dark', 'Dunkel'], ['system', 'System']], 'light') }));
+    wrap.appendChild(settingsRow({ label: 'Links in Nachrichten lesen', sub: 'Ein Link in deiner Frage wird gelesen und für die Antwort genutzt', control: switchControl(settings.readLinks !== false, (on) => { settings.readLinks = on; save(); }) }));
+    wrap.appendChild(settingsRow({ label: 'Chat-Titel von der KI', sub: 'Kurzer Titel nach der ersten Antwort. Kostet etwas Rechenzeit.', control: switchControl(Boolean(settings.autoTitle), (on) => { settings.autoTitle = on; save(); }) }));
+    wrap.appendChild(settingsRow({ label: 'Folgefragen vorschlagen', sub: 'Drei Vorschläge unter der Antwort. Kostet etwas Rechenzeit.', control: switchControl(Boolean(settings.followups), (on) => { settings.followups = on; save(); }) }));
     wrap.appendChild(settingsRow({ label: 'Textgröße', sub: 'Für Antworten und Nachrichten', control: choice('fontSize', [['s', 'Klein'], ['m', 'Normal'], ['l', 'Groß'], ['xl', 'Sehr groß']], 'm') }));
     wrap.appendChild(settingsRow({ label: 'Dichte', sub: 'Kompakt zeigt mehr auf einmal', control: choice('density', [['normal', 'Normal'], ['compact', 'Kompakt']], 'normal') }));
     wrap.appendChild(settingsRow({ label: 'Breite des Chats', control: choice('width', [['narrow', 'Schmal'], ['normal', 'Normal'], ['wide', 'Breit']], 'normal') }));
@@ -314,6 +393,17 @@ export function openSettingsModal({ store, sync = null, initialTab, authRequired
     refresh();
     wrap.appendChild(info);
 
+    const shared = store.all().filter(c => c.shared);
+    if (shared.length) {
+      const box = el('div');
+      box.innerHTML = `<div class="group-title">Geteilte Chats</div>${shared.map(c => `<div class="trash-row" data-id="${c.id}"><div><b>${escapeHtml(c.title)}</b><small>Jeder mit dem Link kann mitlesen</small></div><div><button class="btn" data-copy>Link kopieren</button><button class="btn" data-stop>Teilen beenden</button></div></div>`).join('')}`;
+      box.querySelectorAll('[data-copy]').forEach(b => b.addEventListener('click', () => { const c = store.get(b.closest('.trash-row').dataset.id); navigator.clipboard?.writeText(`${location.origin}${location.pathname}#share=${c.shared}`); showToast('Link kopiert'); }));
+      box.querySelectorAll('[data-stop]').forEach(b => b.addEventListener('click', async () => {
+        const c = store.get(b.closest('.trash-row').dataset.id);
+        await api.unshare(c.shared).catch(() => {}); c.shared = null; store.save(); b.closest('.trash-row').remove(); showToast('Teilen beendet, der Link funktioniert nicht mehr');
+      }));
+      wrap.appendChild(box);
+    }
     const full = el('button', { className: 'btn primary', type: 'button', innerHTML: '<b>Alles sichern</b> (Chats, Projekte, Einstellungen)' });
     full.addEventListener('click', () => exportBackupJSON({ chats: store.raw(), projects: storage.getProjects(), settings: storage.getSettings() }));
     wrap.appendChild(full);
@@ -413,8 +503,18 @@ export function openSettingsModal({ store, sync = null, initialTab, authRequired
   -H "Authorization: Bearer DEIN_SCHLÜSSEL" \\
   -H "Content-Type: application/json" \\
   -d '{"messages":[{"role":"user","content":"Hallo"}]}'</pre>` : 'Nicht eingerichtet. Trage in der <code>.env</code> <code>API_KEYS=name:ein-langer-schluessel</code> ein (mindestens 16 Zeichen) und starte den Dienst neu.'}</div>
+        <div class="group-title">Letzte Meldungen des Servers</div>
+        <div class="pro-code"><select class="set-select" id="log-level"><option value="warn">Warnungen und Fehler</option><option value="all">Alles</option><option value="error">Nur Fehler</option></select><button class="btn" id="log-load">Anzeigen</button></div>
+        <div id="log-box" class="log-box" hidden></div>
         <button class="btn" id="srv-refresh">Aktualisieren</button>`;
       wrap.querySelector('#srv-refresh').addEventListener('click', load);
+      wrap.querySelector('#log-load').addEventListener('click', async () => {
+        const box = wrap.querySelector('#log-box'); box.hidden = false; box.textContent = 'Lade …';
+        try {
+          const logs = await api.adminLogs(wrap.querySelector('#log-level').value);
+          box.innerHTML = logs.length ? logs.map(l => `<div class="log-${l.level}"><time>${new Date(l.t).toLocaleTimeString('de-AT')}</time> ${escapeHtml(l.msg)}</div>`).join('') : 'Keine Meldungen.';
+        } catch (e) { box.textContent = e.message || 'Nicht erreichbar'; }
+      });
     };
     const load = () => api.adminStatus().then(draw).catch(e => { wrap.innerHTML = `<div class="note warn">${escapeHtml(e.message || 'Nicht erreichbar')}</div>`; });
     load();

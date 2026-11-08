@@ -25,30 +25,38 @@ export function chunkText(text, size = 900, overlap = 120) {
   return out;
 }
 
-/** Wählt die besten Abschnitte (höchstens `budget` Zeichen) und gibt sie in Dateireihenfolge als Text zurück. */
-export function retrieve(files, query, budget) {
+/** Index einmal bauen (Abschnitte, Wörter, Häufigkeiten), danach beliebig oft durchsuchen. files = [{ name, text }] */
+export function buildIndex(files) {
   const chunks = [];
   files.forEach((f, fi) => chunkText(f.text).forEach((t, i) => chunks.push({ fi, i, name: f.name, t, tok: tokenize(t) })));
-  const q = [...new Set(tokenize(query))];
-  const N = chunks.length || 1;
-  const avg = chunks.reduce((a, c) => a + c.tok.length, 0) / N || 1;
   const df = new Map();
   for (const c of chunks) for (const w of new Set(c.tok)) df.set(w, (df.get(w) || 0) + 1);
-  for (const c of chunks) {
-    const tf = new Map();
-    c.tok.forEach(w => tf.set(w, (tf.get(w) || 0) + 1));
-    c.score = q.reduce((s, w) => {
-      const f = tf.get(w) || 0;
+  for (const c of chunks) { c.tf = new Map(); c.tok.forEach(w => c.tf.set(w, (c.tf.get(w) || 0) + 1)); }
+  const avg = chunks.reduce((a, c) => a + c.tok.length, 0) / (chunks.length || 1) || 1;
+  return { chunks, df, avg, N: chunks.length || 1 };
+}
+
+/** Abschnitte nach Treffer (BM25) sortiert; ohne Treffer der Anfang jeder Datei. */
+export function searchIndex(index, query) {
+  const q = [...new Set(tokenize(query))];
+  const { chunks, df, avg, N } = index;
+  const scored = chunks.map((c) => ({
+    ...c, score: q.reduce((s, w) => {
+      const f = c.tf.get(w) || 0;
       if (!f) return s;
       const idf = Math.log(1 + (N - (df.get(w) || 0) + 0.5) / ((df.get(w) || 0) + 0.5));
       return s + idf * (f * 2.5) / (f + 1.5 * (0.25 + 0.75 * c.tok.length / avg));
-    }, 0);
-  }
-  let ranked = chunks.filter(c => c.score > 0).sort((a, b) => b.score - a.score);
-  if (!ranked.length) ranked = chunks.filter(c => c.i === 0);   // keine Treffer: Anfang jeder Datei
+    }, 0),
+  }));
+  const hits = scored.filter(c => c.score > 0).sort((a, b) => b.score - a.score);
+  return hits.length ? hits : scored.filter(c => c.i === 0);
+}
+
+/** Wählt die besten Abschnitte (höchstens `budget` Zeichen) und gibt sie in Dateireihenfolge als Text zurück. */
+export function retrieve(files, query, budget) {
   const picked = [];
   let used = 0;
-  for (const c of ranked) {
+  for (const c of searchIndex(buildIndex(files), query)) {
     if (used + c.t.length + 40 > budget) continue;
     picked.push(c); used += c.t.length + 40;
   }

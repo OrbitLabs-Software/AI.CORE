@@ -45,11 +45,15 @@ function filesRow(attachments) {
 }
 
 const sourcesRow = (m) => {
-  const list = (m.sources || []).filter(s => /^https?:\/\//.test(s.url));
+  const list = (m.sources || []).filter(s => s.doc || /^https?:\/\//.test(s.url));
   if (!list.length) return '';
   const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } };
-  return `<div class="sources"><span>Quellen</span>${list.map(s => `<a href="${escapeHtml(s.url)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(s.title)}">[${s.n}] ${escapeHtml(host(s.url))}</a>`).join('')}</div>`;
+  return `<div class="sources"><span>Quellen</span>${list.map(s => s.doc
+    ? `<span class="src-doc" title="Aus deiner Bibliothek">[${escapeHtml(s.n)}] ${escapeHtml(s.title)}</span>`
+    : `<a href="${escapeHtml(s.url)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(s.title)}">[${escapeHtml(s.n)}] ${escapeHtml(host(s.url))}</a>`).join('')}</div>`;
 };
+const followupsRow = (m) => (m.followups?.length
+  ? `<div class="followups">${m.followups.map((q, i) => `<button type="button" class="followup" data-followup="${i}">${escapeHtml(q)}</button>`).join('')}</div>` : '');
 const versionSwitch = (m) => {
   const n = m.versions?.length || 0;
   if (n < 2) return '';
@@ -94,6 +98,10 @@ export function renderMessageEl(message, h = {}) {
   content.addEventListener('click', (e) => { const b = e.target.closest('[data-analyze]'); if (b) h.onAnalyze?.(message.attachments[Number(b.dataset.analyze)]); });
   body.appendChild(content);
   if (message.sources?.length) body.insertAdjacentHTML('beforeend', sourcesRow(message));
+  if (message.followups?.length) {
+    body.insertAdjacentHTML('beforeend', followupsRow(message));
+    body.querySelector('.followups').addEventListener('click', (e) => { const b = e.target.closest('[data-followup]'); if (b) h.onFollowup?.(message.followups[Number(b.dataset.followup)]); });
+  }
 
   // Klicks auf Code-Knöpfe: ein Listener, der auch beim Streamen (neuer innerHTML) erhalten bleibt
   content.addEventListener('click', (e) => {

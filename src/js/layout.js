@@ -28,7 +28,7 @@ export function setupToolsMenu(actions = []) {
   const pop = document.createElement('div');
   pop.className = 'tools-pop'; pop.hidden = true; pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-label', 'Werkzeuge');
   pop.innerHTML = '<div class="tp-title">Für diese Unterhaltung</div><div class="tp-picks"></div><div class="tp-title">Schnell</div><div class="tp-actions"></div>';
-  for (const id of ['pick-role', 'pick-search', 'pick-style']) pop.querySelector('.tp-picks').appendChild(document.querySelector(`.${id}`));
+  for (const id of ['pick-role', 'pick-search', 'pick-library', 'pick-style']) pop.querySelector('.tp-picks').appendChild(document.querySelector(`.${id}`));
   for (const a of actions) {
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'tp-action'; b.dataset.close = '';
@@ -49,6 +49,7 @@ export function setupChips() {
   const spec = [
     ['role-select', 'default', (t) => `Rolle: ${t}`],
     ['search-select', 'off', (t) => t],
+    ['library-select', 'off', () => 'Bibliothek'],
     ['style-select', 'normal', (t) => `Stil: ${t}`],
   ];
   const render = () => {

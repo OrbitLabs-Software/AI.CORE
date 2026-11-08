@@ -1,3 +1,5 @@
+import { install as installLogBuffer } from './logbuffer.js';
+installLogBuffer();
 import { trustProxySetting } from './proxy.js';
 import express from 'express';
 import path from 'path';

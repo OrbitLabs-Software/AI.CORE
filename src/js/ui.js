@@ -83,7 +83,7 @@ export function highlight(code, lang) {
 // ---------- Code-Blöcke ----------
 export const EXT = { js: 'js', javascript: 'js', jsx: 'jsx', ts: 'ts', typescript: 'ts', tsx: 'tsx', py: 'py', python: 'py', html: 'html', css: 'css', json: 'json', sh: 'sh', bash: 'sh', shell: 'sh', svg: 'svg', md: 'md', markdown: 'md', java: 'java', c: 'c', cpp: 'cpp', cs: 'cs', go: 'go', rs: 'rs', rust: 'rs', php: 'php', sql: 'sql', yaml: 'yml', yml: 'yml', xml: 'xml', vue: 'vue', txt: 'txt', csv: 'csv', tsv: 'tsv', ics: 'ics', vcf: 'vcf', ini: 'ini', toml: 'toml', rb: 'rb', swift: 'swift', kt: 'kt', dart: 'dart', lua: 'lua', tex: 'tex', bat: 'bat', ps1: 'ps1', xlsx: 'xlsx', pptx: 'pptx', pdf: 'pdf', docx: 'docx', zip: 'zip' };
 export const isRunnable = (lang) => ['js', 'javascript', 'mjs'].includes(String(lang || '').toLowerCase());
-export const isPreviewable = (lang) => ['html', 'svg'].includes(String(lang || '').toLowerCase());
+export const isPreviewable = (lang) => ['html', 'svg', 'mermaid'].includes(String(lang || '').toLowerCase());
 
 /** "js:app.js", "html index.html", `js title="app.js"` → { lang, file } */
 export function parseFenceInfo(info) {

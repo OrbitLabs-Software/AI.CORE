@@ -9,6 +9,7 @@ const MAX_PROJECT_CHARS = 400000;   // pro Projekt (der Speicher im Browser ist 
 
 export function createProjectStore() {
   let list = storage.getProjects();
+  const stamp = (p) => Math.max(Date.now(), (p.updatedAt || 0) + 1);   // streng aufsteigend, siehe chat.js
   const save = () => { storage.saveProjects(list); if (typeof window !== 'undefined') window.dispatchEvent(new Event('aicore:store-changed')); };
   return {
     all: () => list.filter(p => !p.deletedAt).sort((a, b) => b.updatedAt - a.updatedAt),
@@ -20,8 +21,8 @@ export function createProjectStore() {
       const p = { id: uid(), name: String(name).trim().slice(0, 60) || 'Projekt', instructions: '', files: [], createdAt: Date.now(), updatedAt: Date.now() };
       list.push(p); save(); return p;
     },
-    update(id, patch) { const p = list.find(x => x.id === id); if (p) { Object.assign(p, patch, { updatedAt: Date.now() }); save(); } },
-    remove(id) { const p = list.find(x => x.id === id); if (p) { p.deletedAt = Date.now(); p.updatedAt = p.deletedAt; p.files = []; save(); } },
+    update(id, patch) { const p = list.find(x => x.id === id); if (p) { Object.assign(p, patch, { updatedAt: stamp(p) }); save(); } },
+    remove(id) { const p = list.find(x => x.id === id); if (p) { p.updatedAt = stamp(p); p.deletedAt = p.updatedAt; p.files = []; save(); } },
   };
 }
 

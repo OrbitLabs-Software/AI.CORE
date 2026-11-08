@@ -7,6 +7,9 @@ export function createChatStore() {
 
   // Änderungen erkennen: Wer direkt an einem Chat schreibt (Bewertung, Version, Zusammenfassung …) und dann save() ruft,
   // bekommt automatisch ein neues updatedAt. Das braucht der Geräte-Abgleich.
+  // Zeitstempel pro Chat streng aufsteigend: zwei Änderungen in derselben Millisekunde dürfen nicht gleich aussehen,
+  // sonst hält der Abgleich die zweite für „nicht neuer“ und verliert sie.
+  const bump = (c) => { c.updatedAt = Math.max(Date.now(), (c.updatedAt || 0) + 1); return c.updatedAt; };
   const sigs = new WeakMap();
   function signature(c) {
     let fb = 0, no = 0, alts = 0, vs = 0;
@@ -18,7 +21,7 @@ export function createChatStore() {
   function persist() {
     for (const c of chats) {
       const sig = signature(c);
-      if (sigs.has(c) && sigs.get(c) !== sig) c.updatedAt = Date.now();
+      if (sigs.has(c) && sigs.get(c) !== sig) bump(c);
       sigs.set(c, sig);
     }
     storage.saveChats(chats);
@@ -71,7 +74,7 @@ export function createChatStore() {
   function deleteChat(id) {
     const chat = chats.find(c => c.id === id);
     if (!chat) return;
-    chat.deletedAt = Date.now(); chat.updatedAt = chat.deletedAt; chat.favorite = false;
+    chat.deletedAt = bump(chat); chat.favorite = false;
     if (activeId === id) activeId = all()[0]?.id || null;
     persist();
   }
@@ -79,7 +82,7 @@ export function createChatStore() {
   function restore(id) {
     const chat = chats.find(c => c.id === id && c.deletedAt);
     if (!chat) return false;
-    delete chat.deletedAt; chat.updatedAt = Date.now();
+    delete chat.deletedAt; bump(chat);
     persist();
     return true;
   }
@@ -113,7 +116,7 @@ export function createChatStore() {
     const chat = chats.find(c => c.id === chatId);
     if (!chat) return;
     chat.messages.push(message);
-    chat.updatedAt = Date.now();
+    bump(chat);
     if (chat.title === 'Neuer Chat' && message.role === 'user') {
       chat.title = message.content.slice(0, 48) + (message.content.length > 48 ? '…' : '');
     }
@@ -152,7 +155,7 @@ export function createChatStore() {
     const chat = get(chatId);
     if (!chat) return;
     const idx = chat.messages.findIndex(m => m.id === messageId);
-    if (idx >= 0) { chat.messages = chat.messages.slice(0, idx); chat.updatedAt = Date.now(); persist(); }
+    if (idx >= 0) { chat.messages = chat.messages.slice(0, idx); bump(chat); persist(); }
   }
 
   /** Fügt importierte Chats hinzu; vorhandene IDs werden übersprungen. Gibt die Anzahl zurück. */
