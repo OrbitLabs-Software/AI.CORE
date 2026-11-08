@@ -1,5 +1,26 @@
 # Änderungen
 
+## 5.0.0 — Aurora
+
+**Neues Design:** tiefes Tintenblau (dunkel) und helles Papier (hell), Verlauf nur bei Marke, Senden und aktivem Chat, Glas-Seitenleiste, schwebende Eingabe, Kacheln mit Tiefe, Schrift ohne Serifen. Neu gestaltete Anmeldung.
+
+**Neue Funktionen**
+- **Bibliothek:** Dokumente einmal hochladen (Einstellungen → Bibliothek), im Werkzeug-Menü einschalten; passende Abschnitte (BM25-Suche, ohne Modell) gehen mit Quellenangabe [B1] in die Antwort. Liegt pro Konto auf dem Server (`data/library`, `LIBRARY=false` schaltet ab).
+- **Links lesen:** Ein Link in der Nachricht wird gelesen (Heimnetz-Adressen bleiben gesperrt) und als [L1] zitiert.
+- **Mermaid-Diagramme** haben eine Vorschau.
+- **Modelle verwalten** (Besitzer): Ollama-Modelle mit Fortschritt laden, abbrechen, löschen; freier Speicherplatz.
+- **Server-Meldungen** (Besitzer): letzte Meldungen, Schlüssel unkenntlich gemacht.
+- **Titel und Folgefragen von der KI** (optional), **ganzer Chat als Word** (`/wordchat`), **geteilte Chats verwalten** (Einstellungen → Daten).
+- Server wird automatisch gefunden (Heimnetz und Tailscale).
+
+**Behoben:** Abgleich verlor gelegentlich zwei Änderungen in derselben Millisekunde.
+
+## 4.1.0 — Anmeldung und Server-Suche
+
+- **Anmeldung neu gestaltet:** E-Mail und Passwort stehen oben, Google/GitHub darunter („oder weiter mit“), Verbindungsanzeige „Verbunden mit …“, klarere Fehlermeldungen.
+- **Server wird automatisch gefunden:** Die GitHub-Seite probiert `http://192.168.1.190:3000` (Heimnetz) und die Tailscale-Adresse (unterwegs) gleichzeitig und nimmt die, die antwortet. Im Fenster „Server wählen“ gibt es dafür „Automatisch suchen“.
+- **Abgleich:** Zwei Änderungen in derselben Millisekunde gingen manchmal verloren (Zeitstempel sind jetzt streng aufsteigend).
+
 ## 4.0.0 — übersichtlicher und nützlicher
 
 **Aufgeräumte Oberfläche**
