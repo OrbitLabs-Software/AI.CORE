@@ -1,19 +1,31 @@
 # Änderungen
 
-## 5.0.0 — Wissen in deinen Chats
+## 5.1.0 — Token und Pro
+
+- **Nutzungslimit in Token:** Wort 0,25 · Bild 45,9 · Videosekunde 15,9 · Wort in Datei 0,50 · analysiertes Wort 0,75 · Musiksekunde 10 (alle Preise in der `.env` änderbar).
+- **Gratis:** 4 000 Token, alle 4 Stunden zurückgesetzt. **Pro:** 10 000 Token für 16,99 € im Monat, alle 2 Stunden zurückgesetzt (Stripe).
+- Token-Anzeige oben, neue Pro-Seite mit Guthaben, Tarifen und Preisliste. Bei Fehlschlag (Bild, Video) gibt es die Token zurück.
+
+## 5.0.0 — Aurora
+
+**Neues Design:** tiefes Tintenblau (dunkel) und helles Papier (hell), Verlauf nur bei Marke, Senden und aktivem Chat, Glas-Seitenleiste, schwebende Eingabe, Kacheln mit Tiefe, Schrift ohne Serifen. Neu gestaltete Anmeldung.
 
 **Neue Funktionen**
-- **Bibliothek:** Dokumente (PDF, Word, Text, CSV, Excel …) einmal hochladen und in jedem Chat durchsuchen lassen. Einschalten im Werkzeug-Menü („Bibliothek“). Die passenden Abschnitte gehen mit in die Antwort, die Quellen stehen darunter ([B1], [B2] mit Dokumentname und Abschnitt). Pro Konto auf dem Server in `data/library`, bis 100 Dokumente und 20 Millionen Zeichen. Die Suche ist eine Stichwortsuche und braucht kein Modell.
-- **Links lesen:** Ein Link in deiner Nachricht wird gelesen, und die Antwort nutzt den Inhalt ([L1]). Der Server lädt die Seite, nie eine Adresse aus dem Heimnetz.
-- **Mermaid-Diagramme:** Code-Blöcke mit `mermaid` haben eine Vorschau (Abläufe, Organigramme, Zeitpläne). Dafür braucht der Browser Internet, weil die Zeichenbibliothek von jsDelivr kommt.
-- **Modelle verwalten** (nur Besitzer, Einstellungen → Modelle verwalten): Ollama-Modelle laden mit Fortschrittsanzeige, ansehen und löschen, freier Platz auf der Platte, Vorschläge für den Tiny.
-- **Server-Meldungen** (Einstellungen → Server): die letzten Warnungen und Fehler, ohne ins Terminal zu müssen. Schlüssel und lange Kennungen sind unkenntlich gemacht.
-- **Titel und Folgefragen von der KI** (optional, Einstellungen → Allgemein): kurzer Chat-Titel nach der ersten Antwort, drei Folgefragen als Knöpfe unter der Antwort.
-- **Ganzer Chat als Word-Datei** im Menü „⋯“ oder mit `/wordchat`.
-- **Geteilte Chats verwalten** (Einstellungen → Daten): Link kopieren oder Teilen beenden.
+- **Bibliothek:** Dokumente einmal hochladen (Einstellungen → Bibliothek), im Werkzeug-Menü einschalten; passende Abschnitte (BM25-Suche, ohne Modell) gehen mit Quellenangabe [B1] in die Antwort. Liegt pro Konto auf dem Server (`data/library`, `LIBRARY=false` schaltet ab).
+- **Links lesen:** Ein Link in der Nachricht wird gelesen (Heimnetz-Adressen bleiben gesperrt) und als [L1] zitiert.
+- **Mermaid-Diagramme** haben eine Vorschau.
+- **Modelle verwalten** (Besitzer): Ollama-Modelle mit Fortschritt laden, abbrechen, löschen; freier Speicherplatz.
+- **Server-Meldungen** (Besitzer): letzte Meldungen, Schlüssel unkenntlich gemacht.
+- **Titel und Folgefragen von der KI** (optional), **ganzer Chat als Word** (`/wordchat`), **geteilte Chats verwalten** (Einstellungen → Daten).
+- Server wird automatisch gefunden (Heimnetz und Tailscale).
 
-**Behoben**
-- Änderungen am selben Chat in derselben Millisekunde bekamen denselben Zeitstempel und gingen beim Abgleich verloren. Zeitstempel steigen jetzt pro Chat streng an (4.0 konnte das in seltenen Fällen auslösen).
+**Behoben:** Abgleich verlor gelegentlich zwei Änderungen in derselben Millisekunde.
+
+## 4.1.0 — Anmeldung und Server-Suche
+
+- **Anmeldung neu gestaltet:** E-Mail und Passwort stehen oben, Google/GitHub darunter („oder weiter mit“), Verbindungsanzeige „Verbunden mit …“, klarere Fehlermeldungen.
+- **Server wird automatisch gefunden:** Die GitHub-Seite probiert `http://192.168.1.190:3000` (Heimnetz) und die Tailscale-Adresse (unterwegs) gleichzeitig und nimmt die, die antwortet. Im Fenster „Server wählen“ gibt es dafür „Automatisch suchen“.
+- **Abgleich:** Zwei Änderungen in derselben Millisekunde gingen manchmal verloren (Zeitstempel sind jetzt streng aufsteigend).
 
 ## 4.0.0 — übersichtlicher und nützlicher
 

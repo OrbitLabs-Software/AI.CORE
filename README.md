@@ -1,14 +1,5 @@
 # AI Core 3.2
 
-## Neu in 5.0
-
-**Bibliothek, Links lesen, Mermaid-Diagramme, Modelle und Meldungen verwalten.** Die Einzelheiten stehen im `CHANGELOG.md`.
-
-- **Bibliothek:** Einstellungen → Bibliothek, dann im Werkzeug-Menü unter dem Eingabefeld „Bibliothek“ einschalten. Mit `LIBRARY=false` in der `.env` ist sie aus. Das Modell sieht nie mehr, als in sein Kontextfenster passt; bei kleinen Modellen sind das wenige Absätze. Deshalb sucht AI Core nach Stichwörtern die besten Abschnitte heraus. Wer in der Frage andere Wörter benutzt als im Dokument, findet weniger. Die Dokumente können vom Betreiber des Servers gelesen werden.
-- **Links lesen:** Einstellungen → Allgemein, ein Schalter. Der Server lädt die Seite, die Seite sieht also die Adresse deines Servers.
-- **Modelle verwalten:** Nur für Besitzer (`OWNER_UIDS`, sonst `ALLOWED_UIDS`). Der Dienst muss mit Ollama laufen. Modellnamen und Größen ändern sich bei Ollama, die Vorschläge sind Richtwerte.
-- **Server-Meldungen:** Der Server merkt sich die letzten 300 Meldungen im Speicher (nicht auf der Platte). Nach einem Neustart sind sie weg; `journalctl -u ai-core` zeigt die ganze Geschichte.
-
 ## Neu in 4.0
 
 Aufgeräumter Chat (Werkzeug-Menü, Chips, ruhigere Leiste, neue Startseite), Einstellungen mit Seitenleiste, **Abgleich zwischen Geräten**, **Papierkorb** und **Tabellen-Ansicht** für CSV. Die Einzelheiten stehen im `CHANGELOG.md`.
@@ -116,7 +107,7 @@ Im Heimnetz geht alles über `http://192.168.1.190:3000`. Von unterwegs braucht 
 
 **Pro verkaufen mit Stripe:**
 1. In Stripe ein Produkt mit einem Abo-Preis anlegen, die Preis-ID (`price_...`) kopieren.
-2. In der `.env`: `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`, `PRO_PRICE_LABEL` (zum Beispiel `4,99 € / Monat`) und für den Livebetrieb `PUBLIC_URL` (deine GitHub-Seite).
+2. In der `.env`: `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`, `PRO_PRICE_LABEL` (`16,99 € / Monat`) und für den Livebetrieb `PUBLIC_URL` (deine GitHub-Seite).
 3. Im Stripe-Dashboard das Kundenportal einschalten, damit „Abo verwalten“ funktioniert.
 4. Erst im Testmodus ausprobieren (Testkarte 4242 4242 4242 4242).
 
@@ -211,3 +202,13 @@ ai-core/
 ├── deploy/ai-core.service    Autostart (systemd)
 └── data/                     Sitzungsschlüssel, Erinnerungen (wird erzeugt)
 ```
+
+
+## Token und Pro
+
+Jede Aktion kostet Token: **Wort im Chat 0,25** (deine Nachricht und die Antwort), **Bild 45,9**, **Video 15,9 pro Sekunde**, **Wort in einer hochgeladenen Datei 0,50**, **analysiertes Wort 0,75** (Dateitext, der mit einer Nachricht an die KI geht), **Musik 10 pro Sekunde** (Preis ist hinterlegt, die Funktion kommt später).
+
+- **Gratis:** 4 000 Token zum Start, nach 4 Stunden wieder 4 000.
+- **Pro (16,99 € / Monat):** 10 000 Token, nach 2 Stunden wieder 10 000.
+- Das Zeitfenster beginnt mit der ersten Nutzung. Der Besitzer und Server ohne Anmeldung haben keine Grenze.
+- Zahlung über Stripe: In Stripe ein Produkt mit einem monatlichen Preis von 16,99 € anlegen, die Preis-ID als `STRIPE_PRICE_ID` und den Geheimschlüssel als `STRIPE_SECRET_KEY` in die `.env`. Alle Preise und Mengen stehen in der `.env` (`TOKEN_COST_*`, `FREE_*`, `PRO_*`).
