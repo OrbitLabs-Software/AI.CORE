@@ -790,3 +790,19 @@ body::before { background:
 .lg-server { background: var(--accent-soft); }
 @keyframes aurora-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 .lg-card, .quick-tile, .followup { animation: aurora-in .35s ease-out both; }
+
+/* ---------- Token-Anzeige ---------- */
+.token-chip { display: inline-flex; align-items: center; gap: 4px; height: 30px; padding: 0 10px; border-radius: 99px; border: 1px solid var(--line-strong); background: var(--bg-3); color: var(--text-2); font-size: 13px; cursor: pointer; white-space: nowrap; }
+.token-chip b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.token-chip:hover { border-color: var(--accent); }
+.token-chip.low { border-color: #e5484d; }
+.token-chip.low b { color: #e5484d; }
+.token-chip[hidden] { display: none; }
+.price-table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 8px 0; }
+.price-table td { padding: 7px 4px; border-bottom: 1px solid var(--bg-3); }
+.price-table td:last-child { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+.plan-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 10px 0; }
+.plan-card { padding: 12px; border-radius: 12px; border: 1px solid var(--bg-3); background: var(--bg-2, transparent); font-size: 13px; }
+.plan-card.current { border-color: var(--accent); }
+.plan-card b.big { display: block; font-size: 18px; margin: 2px 0 6px; }
+@media (max-width: 640px) { .plan-cards { grid-template-columns: 1fr; } .token-chip { padding: 0 8px; } }

@@ -14,6 +14,7 @@ import { renderChatList, renderGroupedChats } from '../components/sidebar.js';
 import { renderFilePreviewRow } from '../components/filePreview.js';
 import { initComposer } from '../components/composer.js';
 import { openSettingsModal } from './settings.js';
+import { initTokenChip, setTokens } from './tokens.js';
 import { mountLogin, mountConnect } from './login.js';
 import { isCrossOrigin, findServer } from './config.js';
 import { STYLES, buildSystem } from './styles.js';
@@ -245,7 +246,12 @@ function messageHandlers(chat) {
     onRegenerate: (m) => regenerate(chat.id, m),
     onFollowup: (q) => { if (!busy) sendMessage(q); },
     onEdit: (m) => editMessage(chat.id, m),
-    onAnalyze: (a) => a?.text && openDataDialog({ name: a.name, text: a.text }),
+    onAnalyze: async (a) => {
+      if (!a?.text) return;
+      try { setTokens(await api.tokensAnalyze(a.text.trim().split(/\s+/).filter(Boolean).length)); }
+      catch (e) { return showToast(e.message || 'Die Analyse konnte nicht abgebucht werden'); }
+      openDataDialog({ name: a.name, text: a.text });
+    },
     onBranch: (m, d) => { if (busy) return showToast('Bitte warten, die KI antwortet gerade.'); if (switchBranch(chat, m.id, d)) { store.save(); renderMessages({ keepScroll: true }); } },
     onSpeak: speak,
     onFeedback: (m, v) => { m.feedback = m.feedback === v ? null : v; store.save(); renderMessages({ keepScroll: true }); },
@@ -513,6 +519,7 @@ async function runAssistantTurn(chatId, carry = null) {
       if (ev.notice === 'memory') usedMemory = true;
       if (ev.notice === 'images_ignored') showToast('Dieses Modell kann keine Bilder ansehen — wähle ein Modell mit Bild-Unterstützung.');
       if (ev.meta) stats = ev.meta;
+      if (ev.tokens) setTokens(ev.tokens);
       if (!ev.delta) continue;
 
       if (!started) {
@@ -1155,7 +1162,9 @@ function updateStatus() {
   statusDot.title = s.title;
 }
 
+let tokenChipReady = false;
 async function refreshHealth() {
+  if (!tokenChipReady) { tokenChipReady = true; initTokenChip($('token-chip'), () => openSettings('pro')); }
   try { health = await api.health(); }
   catch (e) { health = null; if (!(e instanceof ApiError)) health = null; }
   syncModelSelect();

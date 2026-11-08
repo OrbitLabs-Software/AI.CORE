@@ -3,6 +3,7 @@ import { storage } from './storage.js';
 import { showToast, escapeHtml, formatBytes } from './ui.js';
 import { serverBase } from './config.js';
 import { api, ApiError } from './api.js';
+import { setTokens } from './tokens.js';
 import { allRoles, BUILTIN_ROLES } from './roles.js';
 import { exportAllJSON, exportBackupJSON, parseImport, parseBackup } from './exporter.js';
 
@@ -527,14 +528,28 @@ export function openSettingsModal({ store, sync = null, initialTab, authRequired
     wrap.innerHTML = '<div class="note">Lade …</div>';
     const returnUrl = () => location.origin + location.pathname;
     const fail = (e) => showToast(e.message || 'Das hat nicht geklappt');
-    const bar = (label, used, max) => `<div class="pro-use"><div class="pro-use-head"><span>${label}</span><b>${used} von ${max}</b></div><div class="pro-bar"><i style="width:${max ? Math.min(100, used / max * 100) : 100}%"></i></div></div>`;
+    const n = (v) => Math.floor(Number(v) || 0).toLocaleString('de-AT');
+    const dec = (v) => (Math.round(v * 100) / 100).toLocaleString('de-AT');
+    const hours = (h) => `${String(h).replace('.', ',')} ${h === 1 ? 'Stunde' : 'Stunden'}`;
+    const bar = (label, used, max) => `<div class="pro-use"><div class="pro-use-head"><span>${label}</span><b>${n(max - used)} von ${n(max)} übrig</b></div><div class="pro-bar"><i style="width:${max ? Math.max(0, Math.min(100, (max - used) / max * 100)) : 0}%"></i></div></div>`;
+    const inMin = (t) => { const min = Math.max(1, Math.ceil((t - Date.now()) / 60000)); return min >= 60 ? `${Math.floor(min / 60)} Std. ${min % 60} Min.` : `${min} Min.`; };
 
     const draw = (p) => {
+      setTokens(p);
       const until = p.until ? new Date(p.until).toLocaleDateString('de-AT') : '';
       const status = p.unlimited ? `${badge('Unbegrenzt', 'ok')}` : p.pro ? `${badge('Pro', 'ok')} <span class="settings-row-sub">aktiv bis ${until}</span>` : `${badge('Kostenlos')}`;
+      const r = p.rates;
+      const rows = [['1 Wort im Chat (Frage und Antwort)', r.word], ['1 Wort in einer hochgeladenen Datei', r.fileWord], ['1 analysiertes Wort', r.analyzedWord], ['1 erzeugtes Bild', r.image], ['1 Sekunde Video', r.videoSecond], ['1 Sekunde Musik', r.musicSecond]];
       wrap.innerHTML = `
-        <div class="note"><b>AI Core Pro</b> ${status}<br>${p.unlimited ? 'Als Besitzer hast du keine Grenzen.' : 'Mehr Videos und Bilder pro Monat. Pro gehört zu deinem Konto und gilt auf allen Geräten.'}</div>
-        ${p.unlimited ? '' : `<div class="group-title">Dieser Monat</div>${bar('Videos', p.used.video, p.limits.video)}${bar('Bilder', p.used.image, p.limits.image)}`}
+        <div class="note"><b>AI Core Pro</b> ${status}<br>${p.unlimited ? 'Als Besitzer hast du keine Grenzen.' : 'Alles, was du nutzt, kostet Token. Dein Guthaben setzt sich nach einer festen Zeit zurück. Pro gibt dir mehr Token und ein schnelleres Zurücksetzen. Pro gehört zu deinem Konto und gilt auf allen Geräten.'}</div>
+        ${p.unlimited ? '' : `<div class="group-title">Dein Guthaben</div>${bar('Token', p.tokens.used, p.tokens.limit)}
+          <div class="settings-row-sub">${p.tokens.resetAt ? `Setzt sich in ${inMin(p.tokens.resetAt)} zurück.` : 'Das Zeitfenster beginnt mit deiner nächsten Anfrage.'} Alle ${hours(p.tokens.resetHours)} gibt es wieder volles Guthaben.</div>
+          <div class="plan-cards">
+            <div class="plan-card ${p.pro ? '' : 'current'}"><span>Kostenlos</span><b class="big">${n(p.plans.free.tokens)} Token</b>Zurücksetzen alle ${hours(p.plans.free.resetHours)}</div>
+            <div class="plan-card ${p.pro ? 'current' : ''}"><span>Pro${p.billing.price ? ` · ${escapeHtml(p.billing.price)}` : ''}</span><b class="big">${n(p.plans.pro.tokens)} Token</b>Zurücksetzen alle ${hours(p.plans.pro.resetHours)}</div>
+          </div>
+          <div class="group-title">Was kostet was</div>
+          <table class="price-table">${rows.map(([t, v]) => `<tr><td>${t}</td><td>${dec(v)} Token</td></tr>`).join('')}</table>`}
         <div class="pro-actions"></div>
         ${p.billing.codes ? `<div class="group-title">Code einlösen</div><div class="pro-code"><input class="text-input" id="pro-code" placeholder="Code eingeben" autocomplete="off" spellcheck="false"><button class="btn" id="pro-redeem">Einlösen</button></div>` : ''}
         ${legalLinks(legal) ? `<div class="settings-row-sub">Mit dem Kauf gelten unsere Bedingungen: ${[['terms', 'AGB'], ['privacy', 'Datenschutz'], ['imprint', 'Impressum']].filter(([k]) => legal[k]).map(([k, t]) => `<a href="${escapeHtml(legal[k])}" target="_blank" rel="noopener noreferrer">${t}</a>`).join(' · ')}</div>` : ''}
