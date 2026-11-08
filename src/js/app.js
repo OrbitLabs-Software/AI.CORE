@@ -14,14 +14,14 @@ import { renderChatList, renderGroupedChats } from '../components/sidebar.js';
 import { renderFilePreviewRow } from '../components/filePreview.js';
 import { initComposer } from '../components/composer.js';
 import { openSettingsModal } from './settings.js';
-import { initTokenChip, setTokens } from './tokens.js';
 import { mountLogin, mountConnect } from './login.js';
-import { isCrossOrigin, findServer } from './config.js';
+import { isCrossOrigin } from './config.js';
 import { STYLES, buildSystem } from './styles.js';
 import { createProjectStore, openProjectDialog } from './projects.js';
 import { bundleHtml } from './bundle.js';
 import { shareIdFromHash, showShared } from './sharedView.js';
 import { buildSearchContext, extractUrls, buildLinkContext, buildLibraryContext, combineContexts } from './websearch.js';
+import { mermaidPage } from './mermaid.js';
 import { markdownToDocx, DOCX_MIME } from './docx.js';
 import { runJs } from './runner.js';
 import { takeBranch, applyBranch, switchBranch } from './branches.js';
@@ -244,14 +244,9 @@ function messageHandlers(chat) {
     speakingId,
     onCopy: (m) => { navigator.clipboard?.writeText(m.content); showToast('Nachricht kopiert'); },
     onRegenerate: (m) => regenerate(chat.id, m),
-    onFollowup: (q) => { if (!busy) sendMessage(q); },
     onEdit: (m) => editMessage(chat.id, m),
-    onAnalyze: async (a) => {
-      if (!a?.text) return;
-      try { setTokens(await api.tokensAnalyze(a.text.trim().split(/\s+/).filter(Boolean).length)); }
-      catch (e) { return showToast(e.message || 'Die Analyse konnte nicht abgebucht werden'); }
-      openDataDialog({ name: a.name, text: a.text });
-    },
+    onFollowup: (q) => sendMessage(q),
+    onAnalyze: (a) => a?.text && openDataDialog({ name: a.name, text: a.text }),
     onBranch: (m, d) => { if (busy) return showToast('Bitte warten, die KI antwortet gerade.'); if (switchBranch(chat, m.id, d)) { store.save(); renderMessages({ keepScroll: true }); } },
     onSpeak: speak,
     onFeedback: (m, v) => { m.feedback = m.feedback === v ? null : v; store.save(); renderMessages({ keepScroll: true }); },
@@ -432,6 +427,8 @@ async function sendMessage(text) {
     else if (settings.memoryHints) memoryHint = suggestMemory(text);
   }
 
+  extrasAbort?.abort();
+  chat.messages.forEach(m => { delete m.followups; });
   const userMsg = { id: uid(), role: 'user', content: text, attachments, memoryHint, createdAt: Date.now() };
   if (editing?.chatId === chat.id) applyBranch(userMsg, takeBranch(chat, editing.id));
   editing = null; showEditBanner();
@@ -458,6 +455,37 @@ function buildHistory(chat) {
 }
 
 let searchAck = false;
+
+/** Zusätzlicher Kontext für die Antwort: gelesene Links, Websuche und Bibliothek. Fehler stoppen nie die Antwort. */
+async function gatherContext(chat) {
+  const q = lastUserText(chat);
+  if (q.length < 4) return null;
+  const share = ctxChars();
+  const parts = [];
+  if (settings.readLinks !== false && appConfig.features?.read !== false) {
+    const urls = extractUrls(q);
+    if (urls.length) {
+      showToast(urls.length > 1 ? 'Ich lese die Links …' : 'Ich lese den Link …');
+      const pages = [];
+      for (const u of urls) { try { pages.push(await api.readUrl(u)); } catch (e) { showToast(e.message || 'Link nicht lesbar'); } }
+      parts.push(buildLinkContext(pages, Math.round(share * 0.45)));
+    }
+  }
+  if ((settings.search || 'off') !== 'off' && appConfig.features?.search !== false) {
+    if (searchAck || confirm('Deine Frage wird für die Suche an einen Suchanbieter im Internet geschickt. Fortfahren?')) {
+      searchAck = true;
+      try { parts.push(buildSearchContext((await api.search(q.slice(0, 200), settings.search === 'deep')).results, Math.round(share * 0.4))); }
+      catch (e) { showToast(e.message || 'Die Websuche hat nicht geklappt'); }
+    }
+  }
+  if (settings.library === 'on' && appConfig.features?.library !== false) {
+    try {
+      const r = await api.librarySearch(recentUserText(chat), Math.round(share * 0.5));
+      if (r.passages.length) parts.push(buildLibraryContext(r.passages, Math.round(share * 0.5))); else showToast('In der Bibliothek wurde nichts Passendes gefunden.');
+    } catch (e) { showToast(e.message || 'Die Bibliothek ist nicht erreichbar'); }
+  }
+  return combineContexts(parts, share);
+}
 /** Platz für Systemprompt-Zusätze (Suche, Projektdateien) in Zeichen, nach dem Kontextfenster des Modells. */
 const ctxChars = () => Math.max(2500, Math.min(20000, Math.round((health?.limits?.numCtx || 8192) * 1.5)));
 const userTexts = (chat) => chat.messages.filter(m => m.role === 'user' && !m.media).map(m => m.content);
@@ -481,34 +509,12 @@ async function runAssistantTurn(chatId, carry = null) {
   abortController = new AbortController();
   try {
     const role = getRole(settings, chat.roleId || settings.roleId);
-    let searchCtx = null;
-    const q = lastUserText(chat);
-    if ((settings.search || 'off') !== 'off' && appConfig.features?.search !== false && q.length >= 4) {
-      if (searchAck || confirm('Deine Frage wird für die Suche an einen Suchanbieter im Internet geschickt. Fortfahren?')) {
-        searchAck = true;
-        try { searchCtx = buildSearchContext((await api.search(q.slice(0, 200), settings.search === 'deep')).results, Math.round(ctxChars() * 0.5)); }
-        catch (e) { showToast(e.message || 'Die Websuche hat nicht geklappt'); }
-      }
-    }
-    let linkCtx = null, libCtx = null;
-    if (settings.readLinks !== false && appConfig.features?.read !== false) {
-      const urls = extractUrls(q, 2);
-      if (urls.length) {
-        const pages = [];
-        for (const u of urls) { try { pages.push(await api.readUrl(u)); } catch (e) { showToast(e.message || 'Link konnte nicht gelesen werden'); } }
-        linkCtx = buildLinkContext(pages, Math.round(ctxChars() * 0.5));
-      }
-    }
-    if (settings.library === 'on' && appConfig.features?.library !== false && q.length >= 3) {
-      try { libCtx = buildLibraryContext((await api.librarySearch(q.slice(0, 500), Math.round(ctxChars() * 0.5))).passages, Math.round(ctxChars() * 0.5)); }
-      catch (e) { showToast(e.message || 'Die Bibliothek ist nicht erreichbar'); }
-    }
-    const ctx = combineContexts([searchCtx, linkCtx, libCtx], Math.round(ctxChars() * 0.75));
-    if (ctx) assistant.sources = ctx.sources;
+    const searchCtx = await gatherContext(chat);   // Links, Websuche und Bibliothek
+    if (searchCtx) assistant.sources = searchCtx.sources;
     const stream = api.streamChat({
       messages: buildHistory(chat),
       model: currentModel(),
-      system: buildSystem(role.prompt, settings, projects.get(chat.projectId), { query: recentUserText(chat), budget: ctxChars(), search: ctx?.block, summary: chat.summary?.text }),
+      system: buildSystem(role.prompt, settings, projects.get(chat.projectId), { query: recentUserText(chat), budget: ctxChars(), search: searchCtx?.block, summary: chat.summary?.text }),
       temperature: settings.temperature ?? undefined,
       memory: settings.useMemory,
       signal: abortController.signal,
@@ -519,7 +525,6 @@ async function runAssistantTurn(chatId, carry = null) {
       if (ev.notice === 'memory') usedMemory = true;
       if (ev.notice === 'images_ignored') showToast('Dieses Modell kann keine Bilder ansehen — wähle ein Modell mit Bild-Unterstützung.');
       if (ev.meta) stats = ev.meta;
-      if (ev.tokens) setTokens(ev.tokens);
       if (!ev.delta) continue;
 
       if (!started) {
@@ -628,7 +633,7 @@ function handleCodeAction(type, block, btn, message) {
   if (type === 'copy') { navigator.clipboard?.writeText(code); showToast('Code kopiert'); }
   else if (type === 'download') saveFile(async () => (await import('./formats.js')).saveBlock(block));
   else if (type === 'export') saveFile(async () => (await import('./formats.js')).saveBlock(block, btn?.dataset.fmt));
-  else if (type === 'preview') panel.open(withBundle(block, message));
+  else if (type === 'preview') panel.open(lang === 'mermaid' ? { code, lang, file: file || 'diagramm.mmd', mode: 'preview', previewCode: mermaidPage(code) } : withBundle(block, message));
   else if (type === 'open') panel.open({ code, lang, file, mode: 'code' });
   else if (type === 'run') runCodeBlock(code, btn);
 }
@@ -879,55 +884,15 @@ function openTemplates() {
 
 // ---------- Websuche-Schalter ----------
 const librarySelect = $('library-select');
-librarySelect.value = settings.library === 'on' ? 'on' : 'off';
-librarySelect.addEventListener('change', () => {
-  settings.library = librarySelect.value; storage.saveSettings(settings);
-  if (settings.library === 'on') showToast('Bibliothek an: passende Abschnitte deiner Dokumente gehen mit in die Antwort.');
-});
+librarySelect.value = settings.library || 'off';
+librarySelect.addEventListener('change', () => { settings.library = librarySelect.value; storage.saveSettings(settings); if (settings.library === 'on') showToast('Bibliothek an: passende Abschnitte deiner Dokumente gehen mit in die Antwort.'); });
+
 const searchSelect = $('search-select');
 searchSelect.value = settings.search || 'off';
 searchSelect.addEventListener('change', () => {
   settings.search = searchSelect.value; storage.saveSettings(settings);
   if (settings.search !== 'off') showToast(settings.search === 'deep' ? 'Tiefe Recherche: die ersten Seiten werden gelesen (dauert länger).' : 'Websuche an: die Frage geht an einen Suchanbieter.');
 });
-
-// ---------- KI-Extras: Titel und Folgefragen (optional, kosten zusätzliche Rechenzeit) ----------
-let extrasAbort = null;
-const cleanLine = (s) => s.replace(/^[\s\-*•\d.)]+/, '').replace(/^["„“']+|["“”']+$/g, '').trim();
-const autoTitleOf = (q) => q.slice(0, 48) + (q.length > 48 ? '…' : '');
-window.addEventListener('aicore:turn-done', (e) => { if (e.detail?.text && (settings.autoTitle || settings.followups)) setTimeout(runExtras, 250); });
-
-async function runExtras() {
-  const chat = store.getActive();
-  if (!chat || busy) return;
-  const msgs = chat.messages.filter(m => !m.media);
-  const lastAi = chat.messages.at(-1);
-  if (lastAi?.role !== 'assistant' || !lastAi.content) return;
-  const lastQ = [...msgs].reverse().find(m => m.role === 'user')?.content || '';
-  const brief = `Frage: ${lastQ.slice(0, 400)}\n\nAntwort: ${lastAi.content.replace(/<think>[\s\S]*?(<\/think>|$)/g, '').slice(0, 900)}`;
-  extrasAbort?.abort(); extrasAbort = new AbortController();
-  const { signal } = extrasAbort;
-  try {
-    if (settings.autoTitle && msgs.length === 2 && chat.title === autoTitleOf(msgs[0].content)) {
-      const t = cleanLine(await askModel(`Gib dem folgenden Gespräch einen kurzen Titel mit höchstens fünf Wörtern. Antworte nur mit dem Titel, ohne Anführungszeichen und ohne Punkt.\n\n${brief}`, 'Du vergibst kurze, treffende Titel auf Deutsch.', signal)).slice(0, 60);
-      if (t.length >= 3 && !signal.aborted) { store.rename(chat.id, t); renderSidebar(); titleEl.textContent = t; }
-    }
-    if (settings.followups && !signal.aborted) {
-      const lines = (await askModel(`Schlage drei kurze Folgefragen vor, die der Nutzer als Nächstes stellen könnte. Eine pro Zeile, ohne Nummerierung, jeweils höchstens zehn Wörter.\n\n${brief}`, 'Du schlägst hilfreiche Folgefragen auf Deutsch vor.', signal))
-        .split('\n').map(cleanLine).filter(l => l.length > 6 && l.length < 120 && l.endsWith('?')).slice(0, 3);
-      if (lines.length && !signal.aborted && store.getActive()?.id === chat.id && chat.messages.at(-1) === lastAi) { lastAi.followups = lines; store.save(); renderMessages({ keepScroll: true }); }
-    }
-  } catch { /* Extras sind nie wichtig genug für eine Fehlermeldung */ }
-}
-
-// ---------- Ganzer Chat als Word-Datei ----------
-function exportChatWord() {
-  const chat = store.getActive();
-  if (!chat?.messages.some(m => !m.media)) return showToast('Der Chat ist leer.');
-  const clean = (t) => t.replace(/<think>[\s\S]*?(<\/think>|$)/g, '').trim();
-  const md = `# ${chat.title}\n\n${chat.messages.filter(m => !m.media).map(m => `## ${m.role === 'user' ? 'Du' : 'AI Core'}\n\n${clean(m.content)}`).join('\n\n')}`;
-  downloadFile(`${(chat.title || 'chat').replace(/[^\wäöüÄÖÜß -]+/g, '').trim().slice(0, 40) || 'chat'}.docx`, markdownToDocx(md), DOCX_MIME);
-}
 
 // ---------- Sprachmodus ----------
 const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -998,6 +963,44 @@ function stopVoice() {
   voice = null;
 }
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && voice) stopVoice(); });
+
+// ---------- KI-Extras: Titel und Folgefragen (optional, kosten zusätzliche Rechenzeit) ----------
+let extrasAbort = null;
+const cleanLine = (s) => s.replace(/^[\s\-*•\d.)]+/, '').replace(/^["„“']+|["“”']+$/g, '').trim();
+const autoTitleOf = (q) => q.slice(0, 48) + (q.length > 48 ? '…' : '');
+window.addEventListener('aicore:turn-done', (e) => { if (e.detail?.text && (settings.autoTitle || settings.followups)) setTimeout(runExtras, 250); });
+
+async function runExtras() {
+  const chat = store.getActive();
+  if (!chat || busy) return;
+  const msgs = chat.messages.filter(m => !m.media);
+  const lastAi = chat.messages.at(-1);
+  if (lastAi?.role !== 'assistant' || !lastAi.content) return;
+  const lastQ = [...msgs].reverse().find(m => m.role === 'user')?.content || '';
+  const brief = `Frage: ${lastQ.slice(0, 400)}\n\nAntwort: ${lastAi.content.replace(/<think>[\s\S]*?(<\/think>|$)/g, '').slice(0, 900)}`;
+  extrasAbort?.abort(); extrasAbort = new AbortController();
+  const { signal } = extrasAbort;
+  try {
+    if (settings.autoTitle && msgs.length === 2 && chat.title === autoTitleOf(msgs[0].content)) {
+      const t = cleanLine(await askModel(`Gib dem folgenden Gespräch einen kurzen Titel mit höchstens fünf Wörtern. Antworte nur mit dem Titel, ohne Anführungszeichen und ohne Punkt.\n\n${brief}`, 'Du vergibst kurze, treffende Titel auf Deutsch.', signal)).slice(0, 60);
+      if (t.length >= 3 && !signal.aborted) { store.rename(chat.id, t); renderSidebar(); titleEl.textContent = t; }
+    }
+    if (settings.followups && !signal.aborted) {
+      const lines = (await askModel(`Schlage drei kurze Folgefragen vor, die der Nutzer als Nächstes stellen könnte. Eine pro Zeile, ohne Nummerierung, jeweils höchstens zehn Wörter.\n\n${brief}`, 'Du schlägst hilfreiche Folgefragen auf Deutsch vor.', signal))
+        .split('\n').map(cleanLine).filter(l => l.length > 6 && l.length < 120 && l.endsWith('?')).slice(0, 3);
+      if (lines.length && !signal.aborted && store.getActive()?.id === chat.id && chat.messages.at(-1) === lastAi) { lastAi.followups = lines; store.save(); renderMessages({ keepScroll: true }); }
+    }
+  } catch { /* Extras sind nie wichtig genug für eine Fehlermeldung */ }
+}
+
+// ---------- Ganzer Chat als Word-Datei ----------
+function exportChatWord() {
+  const chat = store.getActive();
+  if (!chat?.messages.some(m => !m.media)) return showToast('Der Chat ist leer.');
+  const clean = (t) => t.replace(/<think>[\s\S]*?(<\/think>|$)/g, '').trim();
+  const md = `# ${chat.title}\n\n${chat.messages.filter(m => !m.media).map(m => `## ${m.role === 'user' ? 'Du' : 'AI Core'}\n\n${clean(m.content)}`).join('\n\n')}`;
+  downloadFile(`${(chat.title || 'chat').replace(/[^\wäöüÄÖÜß -]+/g, '').trim().slice(0, 40) || 'chat'}.docx`, markdownToDocx(md), DOCX_MIME);
+}
 
 // ---------- Bilder, Videos, Teilen ----------
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -1162,9 +1165,7 @@ function updateStatus() {
   statusDot.title = s.title;
 }
 
-let tokenChipReady = false;
 async function refreshHealth() {
-  if (!tokenChipReady) { tokenChipReady = true; initTokenChip($('token-chip'), () => openSettings('pro')); }
   try { health = await api.health(); }
   catch (e) { health = null; if (!(e instanceof ApiError)) health = null; }
   syncModelSelect();
@@ -1395,6 +1396,7 @@ setupToolsMenu([
   { label: 'Datei anhängen', hint: 'PDF, Word, CSV, Bild', run: () => $('attach-btn').click() },
   { label: 'Sprachmodus', hint: '/sprache', run: () => startVoice() },
   { label: 'Verlauf zusammenfassen', hint: '/komprimieren', run: compressChat },
+  { label: 'Bibliothek verwalten', hint: 'Dokumente', run: () => openSettings('library') },
 ]);
 const renderChips = setupChips();
 setupMoreMenu([{ label: 'Chat als Word speichern', run: exportChatWord }, { label: 'Befehlspalette', run: () => openCommandPalette() }, { label: 'Einstellungen', run: () => openSettings('general') }]);
@@ -1433,7 +1435,6 @@ function confirmProReturn() {
     history.replaceState(null, '', location.pathname + location.search);
   }
   try {
-    await findServer();
     applyConfig(await api.config());
   } catch (e) {
     health = null;

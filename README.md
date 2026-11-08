@@ -1,5 +1,14 @@
 # AI Core 3.2
 
+## Neu in 5.0
+
+**Bibliothek, Links lesen, Mermaid-Diagramme, Modelle und Meldungen verwalten.** Die Einzelheiten stehen im `CHANGELOG.md`.
+
+- **Bibliothek:** Einstellungen → Bibliothek, dann im Werkzeug-Menü unter dem Eingabefeld „Bibliothek“ einschalten. Mit `LIBRARY=false` in der `.env` ist sie aus. Das Modell sieht nie mehr, als in sein Kontextfenster passt; bei kleinen Modellen sind das wenige Absätze. Deshalb sucht AI Core nach Stichwörtern die besten Abschnitte heraus. Wer in der Frage andere Wörter benutzt als im Dokument, findet weniger. Die Dokumente können vom Betreiber des Servers gelesen werden.
+- **Links lesen:** Einstellungen → Allgemein, ein Schalter. Der Server lädt die Seite, die Seite sieht also die Adresse deines Servers.
+- **Modelle verwalten:** Nur für Besitzer (`OWNER_UIDS`, sonst `ALLOWED_UIDS`). Der Dienst muss mit Ollama laufen. Modellnamen und Größen ändern sich bei Ollama, die Vorschläge sind Richtwerte.
+- **Server-Meldungen:** Der Server merkt sich die letzten 300 Meldungen im Speicher (nicht auf der Platte). Nach einem Neustart sind sie weg; `journalctl -u ai-core` zeigt die ganze Geschichte.
+
 ## Neu in 4.0
 
 Aufgeräumter Chat (Werkzeug-Menü, Chips, ruhigere Leiste, neue Startseite), Einstellungen mit Seitenleiste, **Abgleich zwischen Geräten**, **Papierkorb** und **Tabellen-Ansicht** für CSV. Die Einzelheiten stehen im `CHANGELOG.md`.
@@ -103,9 +112,7 @@ Im Heimnetz geht alles über `http://192.168.1.190:3000`. Von unterwegs braucht 
 
 **Video über Hugging Face:** `HF_TOKEN` in der `.env` eintragen (Token mit Berechtigung „Inference Providers“) und auf dem Server `npm install @huggingface/inference` ausführen. Welche Modelle gerade Videos können, zeigt `https://huggingface.co/api/models?inference_provider=all&pipeline_tag=text-to-video`; das Modell steht in `HF_VIDEO_MODEL`. Ein Video kostet Guthaben beim Anbieter. Das kleine Gratis-Guthaben eines Kontos gilt für den ganzen Server, nicht pro Nutzer, und reicht nur für wenige Clips. Setze deshalb `VIDEO_MAX_PER_MONTH_TOTAL` auf eine Zahl, die dein Budget verträgt.
 
-**Token-Guthaben:** Alles, was jemand nutzt, kostet Token. Voreinstellung: Gratis 4 000 Token, Zurücksetzen alle 4 Stunden; Pro 10 000 Token für 16,99 € im Monat, Zurücksetzen alle 2 Stunden. Das Zeitfenster beginnt mit der ersten Nutzung nach dem Zurücksetzen. Preise: 1 Wort im Chat (Frage und Antwort) 0,25 · 1 Wort in einer hochgeladenen Datei 0,5 (beim Hochladen) · 1 analysiertes Wort 0,75 (beim Öffnen der Datenanalyse) · 1 Bild 45,9 · 1 Sekunde Video 15,9 · 1 Sekunde Musik 10. Alles lässt sich in der `.env` ändern (`FREE_TOKENS`, `PRO_TOKENS`, `*_RESET_HOURS`, `TOKEN_RATE_*`). Wer in `OWNER_UIDS` steht, hat keine Grenzen. Die Antwort im Chat wird nach den tatsächlich erzeugten Wörtern abgebucht, der Chat stoppt also nicht mitten im Satz; das Guthaben kann dabei nicht unter null fallen. Misslingt ein Bild oder Video, gibt es die Token zurück. Musik: Der Preis ist hinterlegt, eine Musikfunktion gibt es in AI Core noch nicht. Die Schnittstelle `/v1` für andere Programme zählt nicht mit.
-
-**Pro bezahlen (Stripe):** In Stripe ein Produkt „AI Core Pro“ mit dem Preis 16,99 € pro Monat (wiederkehrend) anlegen, die Preis-ID (`price_…`) als `STRIPE_PRICE_ID` und den geheimen Schlüssel als `STRIPE_SECRET_KEY` in die `.env`, `PRO_PRICE_LABEL=16,99 € pro Monat`, Server neu starten. Dann erscheint unter Einstellungen → Pro der Kaufknopf. Kündigen geht über „Abo verwalten“.
+**Kontingente:** Pro Konto und Kalendermonat. Voreinstellung gratis 1 Video und 10 Bilder, Pro 20 Videos und 200 Bilder. Wer in `OWNER_UIDS` steht, hat keine Grenzen.
 
 **Pro verkaufen mit Stripe:**
 1. In Stripe ein Produkt mit einem Abo-Preis anlegen, die Preis-ID (`price_...`) kopieren.

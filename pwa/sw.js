@@ -1,6 +1,6 @@
 // sw.js — Offline-Hülle für AI Core: Die Oberfläche startet auch ohne Netz. Antworten der KI brauchen immer den Server.
 // Strategie: erst das Netz (damit Updates sofort da sind), bei Ausfall die zuletzt gespeicherte Fassung.
-const CACHE = 'aicore-shell-v4.0.0';
+const CACHE = 'aicore-shell-v5.0.0';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png'];
 
 self.addEventListener('install', (e) => {

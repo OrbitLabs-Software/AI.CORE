@@ -168,11 +168,6 @@ export const api = {
   },
 
   // ---------- Tarif ----------
-  async tokensAnalyze(words) {
-    const res = await jsonPost('/api/tokens/analyze', { words });
-    if (!res.ok) throw new ApiError(await errorMessage(res), res.status);
-    return res.json();
-  },
   async plan() { const res = await request('/api/plan'); if (!res.ok) throw new ApiError(await errorMessage(res), res.status); return res.json(); },
   async proCheckout(returnUrl) {
     const res = await jsonPost('/api/pro/checkout', { returnUrl });
@@ -211,13 +206,11 @@ export const api = {
   async image(prompt) {
     const res = await jsonPost('/api/image', { prompt });
     if (!res.ok) throw new ApiError(await errorMessage(res), res.status);
-    window.dispatchEvent(new CustomEvent('aicore:tokens-stale'));
     return (await res.json()).image;
   },
   async videoStart(prompt) {
     const res = await jsonPost('/api/video', { prompt });
     if (!res.ok) throw new ApiError(await errorMessage(res), res.status);
-    window.dispatchEvent(new CustomEvent('aicore:tokens-stale'));
     return (await res.json()).id;
   },
   async videoStatus(id) {
@@ -244,7 +237,6 @@ export const api = {
     form.append('file', file);
     const res = await request('/api/upload', { method: 'POST', body: form });
     if (!res.ok) throw new ApiError(await errorMessage(res), res.status);
-    window.dispatchEvent(new CustomEvent('aicore:tokens-stale'));
     return res.json();
   },
 

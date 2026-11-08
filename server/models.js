@@ -1,9 +1,11 @@
 // models.js — Ollama-Modelle von der Weboberfläche aus laden und löschen (nur für den Besitzer).
+// Das Laden läuft im Hintergrund; die Oberfläche fragt den Fortschritt ab.
 import fs from 'fs';
 
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,99}$/;
 export const validName = (n) => typeof n === 'string' && NAME.test(n) && !n.includes('..');
 
+// Richtwerte; Namen und Größen ändern sich bei Ollama, deshalb steht unten im Menü auch ein freies Feld.
 export const SUGGESTED = [
   { name: 'llama3.2:3b', note: 'kleiner Allrounder, etwa 2 GB' },
   { name: 'qwen2.5:3b', note: 'Allrounder, etwa 2 GB' },
@@ -16,6 +18,7 @@ export const SUGGESTED = [
 let job = null;
 export const pullStatus = () => (job ? { name: job.name, status: job.status, percent: job.percent, error: job.error, done: job.done } : null);
 export const _resetJob = () => { job = null; };
+
 export function cancelPull() { if (job && !job.done) { job.ac.abort(); return true; } return false; }
 
 export function startPull(name, cfg) {

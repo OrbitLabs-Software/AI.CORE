@@ -9,61 +9,30 @@ const plan = await import('../server/plan.js');
 const stripe = await import('../server/stripe.js');
 const video = await import('../server/video.js');
 
-test('Preise: Wort, Bild, Video, Datei, Analyse, Musik', () => {
-  assert.equal(plan.cost('words', 100), 25);
-  assert.equal(plan.cost('image'), 45.9);
-  assert.equal(plan.cost('video', 4), 63.6);
-  assert.equal(plan.cost('fileWords', 100), 50);
-  assert.equal(plan.cost('analyzedWords', 100), 75);
-  assert.equal(plan.cost('music', 30), 300);
-  assert.equal(plan.countWords('  Ein  kurzer\nSatz  '), 3);
-  assert.equal(plan.countWords(''), 0);
-});
-
-test('Gratis: 4000 Token, danach gesperrt; Rückgabe gibt Token zurück', () => {
-  const k = 'u1', t0 = 1_000_000_000_000;
-  assert.equal(plan.planStatus(k, { now: t0 }).tokens.limit, 4000);
-  assert.equal(plan.charge(k, 3900, { now: t0 }).ok, true);
-  const second = plan.charge(k, 200, { now: t0 + 1000 });
+test('Gratis: 1 Video pro Monat, danach gesperrt; Rückgabe gibt es zurück', () => {
+  const k = 'u1';
+  assert.equal(plan.reserve(k, 'video').ok, true);
+  const second = plan.reserve(k, 'video');
   assert.equal(second.ok, false);
   assert.equal(second.status, 402);
   assert.match(second.error, /Pro/);
-  assert.match(second.error, /4 Std\./);                                    // setzt sich in 4 Stunden zurück
-  plan.refund(k, 3900, { now: t0 + 2000 });
-  assert.equal(plan.charge(k, 200, { now: t0 + 3000 }).ok, true);
+  plan.refund(k, 'video');
+  assert.equal(plan.reserve(k, 'video').ok, true);
 });
 
-test('Gratis setzt sich nach 4 Stunden zurück, Pro nach 2 Stunden und hat 10 000 Token', () => {
-  const t0 = 2_000_000_000_000, H = 3600000;
-  plan.charge('r1', 4000, { now: t0 });
-  assert.equal(plan.canAfford('r1', 1, { now: t0 + 4 * H - 60000 }).ok, false);   // fast 4 Stunden: noch leer
-  assert.equal(plan.canAfford('r1', 4000, { now: t0 + 4 * H }).ok, true);          // nach 4 Stunden: voll
-  assert.equal(plan.planStatus('r1', { now: t0 + 4 * H }).tokens.remaining, 4000);
-
-  plan.grantPro('r2', { until: t0 + 30 * 86400000, source: 'code' });
-  assert.equal(plan.planStatus('r2', { now: t0 }).tokens.limit, 10000);
-  assert.equal(plan.charge('r2', 10000, { now: t0 }).ok, true);
-  assert.equal(plan.canAfford('r2', 1, { now: t0 + 2 * H - 60000 }).ok, false);
-  assert.equal(plan.canAfford('r2', 10000, { now: t0 + 2 * H }).ok, true);        // Pro: schon nach 2 Stunden
-});
-
-test('Antworten werden bis zum Limit abgebucht, nie ins Minus; Konten sind getrennt', () => {
-  const t0 = 3_000_000_000_000;
-  plan.charge('a1', 3990, { now: t0 });
-  const r = plan.charge('a1', 50, { now: t0 + 1, strict: false });
-  assert.equal(r.ok, true); assert.equal(r.charged, 10);
-  assert.equal(plan.planStatus('a1', { now: t0 + 2 }).tokens.remaining, 0);
-  assert.equal(plan.canAfford('a2', 4000, { now: t0 }).ok, true);                  // anderes Konto: eigenes Guthaben
+test('Kontingent zählt pro Monat und pro Konto', () => {
+  assert.equal(plan.reserve('u2', 'video').ok, true);                       // anderes Konto: eigenes Kontingent
+  const nextMonth = Date.now() + 32 * 86400000;
+  assert.equal(plan.reserve('u1', 'video', { now: nextMonth }).ok, true);   // neuer Monat
 });
 
 test('Pro erhöht das Limit, Besitzer ist unbegrenzt', () => {
   plan.grantPro('u3', { until: Date.now() + 86400000, source: 'code' });
   assert.equal(plan.planStatus('u3').pro, true);
-  assert.equal(plan.planStatus('u3').plans.pro.tokens, 10000);
-  assert.equal(plan.charge('u3', 9999).ok, true);
-  assert.equal(plan.charge('u3', 5).ok, false);
-  for (let i = 0; i < 30; i++) assert.equal(plan.charge('boss', 5000, { unlimited: true }).ok, true);
-  assert.equal(plan.planStatus('boss', { unlimited: true }).tokens.used, 0);
+  assert.equal(plan.planStatus('u3').limits.video, 20);
+  for (let i = 0; i < 20; i++) assert.equal(plan.reserve('u3', 'video').ok, true);
+  assert.equal(plan.reserve('u3', 'video').ok, false);
+  for (let i = 0; i < 30; i++) assert.equal(plan.reserve('boss', 'video', { unlimited: true }).ok, true);
 });
 
 test('Pro läuft ab', () => {
@@ -73,11 +42,10 @@ test('Pro läuft ab', () => {
 
 test('Gesamtlimit als Notbremse', () => {
   process.env.IMAGE_MAX_PER_MONTH_TOTAL = '2';
-  assert.equal(plan.globalCapReached('image'), false);
-  plan.countGlobal('image'); plan.countGlobal('image');
-  assert.equal(plan.globalCapReached('image'), true);
-  plan.countGlobal('image', -1);
-  assert.equal(plan.globalCapReached('image'), false);
+  assert.equal(plan.reserve('g1', 'image').ok, true);
+  assert.equal(plan.reserve('g2', 'image').ok, true);
+  const r = plan.reserve('g3', 'image');
+  assert.equal(r.ok, false); assert.equal(r.status, 503);
   delete process.env.IMAGE_MAX_PER_MONTH_TOTAL;
 });
 
@@ -128,7 +96,7 @@ test('Stripe: Checkout wird als Formular gesendet, Bestätigung prüft das Konto
   } finally { globalThis.fetch = realFetch; }
 });
 
-test('Hugging Face: Video wird im Hintergrund erzeugt und gespeichert; Fehler lösen die Rückgabe aus', async () => {
+test('Hugging Face: Video wird im Hintergrund erzeugt und gespeichert; Fehler geben das Kontingent zurück', async () => {
   process.env.HF_TOKEN = 'hf_x'; process.env.HF_VIDEO_MODEL = 'Lightricks/LTX-Video';
   assert.equal(video.videoBackend(), 'huggingface');
   let args;

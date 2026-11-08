@@ -1,5 +1,5 @@
-// logbuffer.js — die letzten Meldungen des Servers im Speicher, damit der Besitzer sie in der Oberfläche lesen kann.
-// Schlüssel und lange Kennungen werden unkenntlich gemacht.
+// logbuffer.js — die letzten Meldungen des Servers (console.log/warn/error) im Speicher, damit der Besitzer sie in der
+// Oberfläche lesen kann, ohne ins Terminal zu müssen. Schlüssel und lange Kennungen werden unkenntlich gemacht.
 import util from 'util';
 
 const MAX = 300;
@@ -20,10 +20,12 @@ export function add(level, args, now = Date.now()) {
   if (entries.length > MAX) entries.splice(0, entries.length - MAX);
 }
 
+/** Neueste zuerst. level: 'all' | 'warn' (Warnungen und Fehler) | 'error' */
 export function getLogs({ level = 'all', limit = 100 } = {}) {
   const ok = level === 'error' ? ['error'] : level === 'warn' ? ['warn', 'error'] : ['log', 'info', 'warn', 'error'];
   return entries.filter(e => ok.includes(e.level)).slice(-Math.min(300, Math.max(1, limit))).reverse();
 }
+
 export const _clear = () => { entries.length = 0; };
 
 export function install() {

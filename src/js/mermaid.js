@@ -1,5 +1,5 @@
 // mermaid.js — Diagramme (```mermaid) in der Vorschau zeichnen. Die Seite lädt die Bibliothek von jsDelivr und läuft
-// wie jede Vorschau abgeschottet (sandbox). Dafür braucht der Browser Internet.
+// wie jede Vorschau abgeschottet (sandbox, ohne Zugriff auf AI Core). Dafür braucht der Browser Internet.
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 export function mermaidPage(code) {
