@@ -72,7 +72,7 @@ async function fetchPage(url) {
       chunks.push(value); size += value.length;
     }
     reader.cancel().catch(() => {});
-    return { url: current.href, html: /html/i.test(type), raw: new TextDecoder().decode(Buffer.concat(chunks)) };
+    return { url: current.href ?? String(current), html: /html/i.test(type), raw: new TextDecoder().decode(Buffer.concat(chunks)) };
   }
   throw new Error('Zu viele Weiterleitungen');
 }

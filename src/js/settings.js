@@ -45,15 +45,15 @@ export function openSettingsModal({ store, sync = null, initialTab, authRequired
     const wrap = el('div');
     wrap.innerHTML = '<div class="note">Lade …</div>';
     const draw = (lib) => {
-      wrap.innerHTML = `<div class="note"><b>Deine Dokumente, in jedem Chat durchsuchbar.</b> Lade Handbücher, Verträge oder Notizen einmal hoch. Schaltest du im Werkzeug-Menü „Bibliothek“ ein, gehen die passenden Abschnitte mit in die Antwort, mit Quellenangabe. Die Dokumente liegen auf deinem Server (<code>data/library</code>).</div>
-        <div class="settings-row-sub">${lib.docs.length} Dokumente · ${formatBytes(lib.chars)} Text von maximal ${formatBytes(lib.maxChars)}</div>
+      wrap.innerHTML = `<div class="note"><b>Deine Dokumente, in jedem Chat durchsuchbar.</b> Lade Handbücher, Verträge oder Notizen einmal hoch. Schaltest du im Werkzeug-Menü „Bibliothek“ ein, gehen die passenden Abschnitte mit in die Antwort, mit Quellenangabe. Die Dokumente liegen auf deinem Server.</div>
+        <div class="settings-row-sub">${lib.count} Dokumente · ${formatBytes(lib.chars)} Text von maximal ${formatBytes(lib.maxChars)}</div>
         <input type="file" id="lib-file" multiple hidden accept=".pdf,.docx,.txt,.md,.csv,.tsv,.json,.html,.xlsx">
         <div class="pro-actions"><button class="btn primary" id="lib-add"><b>Dokumente hinzufügen</b></button></div>
         ${lib.docs.length ? lib.docs.map(d => `<div class="trash-row" data-id="${d.id}"><div><b>${escapeHtml(d.name)}</b><small>${formatBytes(d.chars)} Text · ${new Date(d.addedAt).toLocaleDateString('de-AT')}</small></div><div><button class="btn" data-del>Löschen</button></div></div>`).join('') : '<div class="settings-row-sub">Noch keine Dokumente.</div>'}`;
       const input = wrap.querySelector('#lib-file');
       wrap.querySelector('#lib-add').addEventListener('click', () => input.click());
       input.addEventListener('change', async () => {
-        const btn = wrap.querySelector('#lib-add'); btn.disabled = true;
+        wrap.querySelector('#lib-add').disabled = true;
         for (const f of input.files) {
           try {
             const data = await api.upload(f);
@@ -79,7 +79,7 @@ export function openSettingsModal({ store, sync = null, initialTab, authRequired
   function renderServerModels() {
     const wrap = el('div');
     wrap.innerHTML = '<div class="note">Lade …</div>';
-    let timer = null;
+    let timer = null, notified = false;
     const gb = (n) => (n > 1e9 ? `${(n / 1e9).toFixed(1)} GB` : `${Math.round(n / 1e6)} MB`);
     const draw = (m) => {
       const running = m.pull && !m.pull.done;
@@ -91,7 +91,7 @@ export function openSettingsModal({ store, sync = null, initialTab, authRequired
         <div class="pro-code"><input class="text-input" id="mdl-name" placeholder="z. B. llama3.2:3b" autocomplete="off" spellcheck="false" ${running ? 'disabled' : ''}><button class="btn primary" id="mdl-pull" ${running || !m.reachable ? 'disabled' : ''}><b>Laden</b></button></div>
         <div class="pro-actions">${m.suggested.map(s => `<button class="btn" data-suggest="${escapeHtml(s.name)}" title="${escapeHtml(s.note)}">${escapeHtml(s.name)}</button>`).join('')}</div>
         ${m.pull ? `<div class="pro-use"><div class="pro-use-head"><span>${escapeHtml(m.pull.name)}: ${m.pull.error ? escapeHtml(m.pull.error) : escapeHtml(m.pull.status)}</span><b>${m.pull.percent} %</b></div><div class="pro-bar"><i style="width:${m.pull.percent}%"></i></div>${running ? '<button class="btn" id="mdl-cancel">Abbrechen</button>' : ''}</div>` : ''}
-        <div class="settings-row-sub">Die Vorschläge sind Richtwerte. Namen und Größen ändern sich bei Ollama; andere Modelle findest du auf ollama.com/library.</div>`;
+        <div class="settings-row-sub">Die Vorschläge sind Richtwerte. Andere Modelle findest du auf ollama.com/library.</div>`;
       wrap.querySelectorAll('[data-suggest]').forEach(b => b.addEventListener('click', () => { wrap.querySelector('#mdl-name').value = b.dataset.suggest; }));
       wrap.querySelector('#mdl-pull')?.addEventListener('click', async () => {
         const name = wrap.querySelector('#mdl-name').value.trim();
@@ -108,9 +108,9 @@ export function openSettingsModal({ store, sync = null, initialTab, authRequired
       }));
       clearTimeout(timer);
       if (running) timer = setTimeout(load, 1500);
-      else if (m.pull?.done && !m.pull.error && !wrap.dataset.notified) { wrap.dataset.notified = '1'; showToast(`${m.pull.name} ist geladen`); onModelsChange(); }
+      else if (m.pull?.done && !m.pull.error && !notified) { notified = true; showToast(`${m.pull.name} ist geladen`); onModelsChange(); }
     };
-    const load = () => { if (!wrap.isConnected && wrap.dataset.mounted) return; wrap.dataset.mounted = '1'; return api.adminModels().then(draw).catch(e => { wrap.innerHTML = `<div class="note warn">${escapeHtml(e.message || 'Nicht erreichbar')}</div>`; }); };
+    const load = () => api.adminModels().then(draw).catch(e => { wrap.innerHTML = `<div class="note warn">${escapeHtml(e.message || 'Nicht erreichbar')}</div>`; });
     load();
     return wrap;
   }
@@ -181,8 +181,8 @@ export function openSettingsModal({ store, sync = null, initialTab, authRequired
     };
     wrap.appendChild(settingsRow({ label: 'Design', sub: '„System“ folgt dem Gerät', control: choice('theme', [['light', 'Hell'], ['dark', 'Dunkel'], ['system', 'System']], 'light') }));
     wrap.appendChild(settingsRow({ label: 'Links in Nachrichten lesen', sub: 'Ein Link in deiner Frage wird gelesen und für die Antwort genutzt', control: switchControl(settings.readLinks !== false, (on) => { settings.readLinks = on; save(); }) }));
-    wrap.appendChild(settingsRow({ label: 'Chat-Titel von der KI', sub: 'Kurzer Titel nach der ersten Antwort. Kostet etwas Rechenzeit.', control: switchControl(Boolean(settings.autoTitle), (on) => { settings.autoTitle = on; save(); }) }));
-    wrap.appendChild(settingsRow({ label: 'Folgefragen vorschlagen', sub: 'Drei Vorschläge unter der Antwort. Kostet etwas Rechenzeit.', control: switchControl(Boolean(settings.followups), (on) => { settings.followups = on; save(); }) }));
+    wrap.appendChild(settingsRow({ label: 'Chat-Titel von der KI', sub: 'Kurzer Titel nach der ersten Antwort. Kostet ein paar Token.', control: switchControl(Boolean(settings.autoTitle), (on) => { settings.autoTitle = on; save(); }) }));
+    wrap.appendChild(settingsRow({ label: 'Folgefragen vorschlagen', sub: 'Drei Vorschläge unter der Antwort. Kostet ein paar Token.', control: switchControl(Boolean(settings.followups), (on) => { settings.followups = on; save(); }) }));
     wrap.appendChild(settingsRow({ label: 'Textgröße', sub: 'Für Antworten und Nachrichten', control: choice('fontSize', [['s', 'Klein'], ['m', 'Normal'], ['l', 'Groß'], ['xl', 'Sehr groß']], 'm') }));
     wrap.appendChild(settingsRow({ label: 'Dichte', sub: 'Kompakt zeigt mehr auf einmal', control: choice('density', [['normal', 'Normal'], ['compact', 'Kompakt']], 'normal') }));
     wrap.appendChild(settingsRow({ label: 'Breite des Chats', control: choice('width', [['narrow', 'Schmal'], ['normal', 'Normal'], ['wide', 'Breit']], 'normal') }));
@@ -508,14 +508,13 @@ export function openSettingsModal({ store, sync = null, initialTab, authRequired
         <div id="log-box" class="log-box" hidden></div>
         <button class="btn" id="srv-refresh">Aktualisieren</button>`;
       wrap.querySelector('#srv-refresh').addEventListener('click', load);
-      const showLogs = async () => {
+      wrap.querySelector('#log-load').addEventListener('click', async () => {
         const box = wrap.querySelector('#log-box'); box.hidden = false; box.textContent = 'Lade …';
         try {
           const logs = await api.adminLogs(wrap.querySelector('#log-level').value);
           box.innerHTML = logs.length ? logs.map(l => `<div class="log-${l.level}"><time>${new Date(l.t).toLocaleTimeString('de-AT')}</time> ${escapeHtml(l.msg)}</div>`).join('') : 'Keine Meldungen.';
         } catch (e) { box.textContent = e.message || 'Nicht erreichbar'; }
-      };
-      wrap.querySelector('#log-load').addEventListener('click', showLogs);
+      });
     };
     const load = () => api.adminStatus().then(draw).catch(e => { wrap.innerHTML = `<div class="note warn">${escapeHtml(e.message || 'Nicht erreichbar')}</div>`; });
     load();
@@ -528,25 +527,47 @@ export function openSettingsModal({ store, sync = null, initialTab, authRequired
     wrap.innerHTML = '<div class="note">Lade …</div>';
     const returnUrl = () => location.origin + location.pathname;
     const fail = (e) => showToast(e.message || 'Das hat nicht geklappt');
-    const bar = (label, used, max) => `<div class="pro-use"><div class="pro-use-head"><span>${label}</span><b>${used} von ${max}</b></div><div class="pro-bar"><i style="width:${max ? Math.min(100, used / max * 100) : 100}%"></i></div></div>`;
+    const nf = (n) => Number(n).toLocaleString('de-AT', { maximumFractionDigits: 2 });
+    const dur = (ms) => { const m = Math.max(1, Math.ceil(ms / 60000)); return m >= 60 ? `${Math.floor(m / 60)} Std ${m % 60} Min` : `${m} Min`; };
 
     const draw = (p) => {
+      const t = p.tokens || {};
       const until = p.until ? new Date(p.until).toLocaleDateString('de-AT') : '';
-      const status = p.unlimited ? `${badge('Unbegrenzt', 'ok')}` : p.pro ? `${badge('Pro', 'ok')} <span class="settings-row-sub">aktiv bis ${until}</span>` : `${badge('Kostenlos')}`;
+      const status = p.unlimited ? badge('Unbegrenzt', 'ok') : p.pro ? `${badge('Pro', 'ok')} <span class="settings-row-sub">aktiv bis ${until}</span>` : badge('Kostenlos');
+      const c = t.costs || {};
+      const plan = p.pro ? t.pro : t.free;
+      const pct = t.max ? Math.max(0, Math.min(100, t.left / t.max * 100)) : 100;
+      const reset = t.resetAt ? `Wird in ${dur(t.resetAt - Date.now())} zurückgesetzt` : `Das Fenster startet mit deiner nächsten Aktion`;
+      const rows = [['Wort im Chat', c.word, 'Wort'], ['Bild erzeugen', c.image, 'Bild'], ['Video', c.videoSecond, 'Sekunde'], ['Wort in einer Datei', c.fileWord, 'Wort'], ['Analysiertes Wort', c.analyzeWord, 'Wort'], ['Musik', c.musicSecond, 'Sekunde']];
+      const buys = (max) => `${nf(Math.floor(max / c.word))} Wörter · ${nf(Math.floor(max / c.image))} Bilder · ${nf(Math.floor(max / (c.videoSecond * 4)))} Videos à 4 s`;
       wrap.innerHTML = `
-        <div class="note"><b>AI Core Pro</b> ${status}<br>${p.unlimited ? 'Als Besitzer hast du keine Grenzen.' : 'Mehr Videos und Bilder pro Monat. Pro gehört zu deinem Konto und gilt auf allen Geräten.'}</div>
-        ${p.unlimited ? '' : `<div class="group-title">Dieser Monat</div>${bar('Videos', p.used.video, p.limits.video)}${bar('Bilder', p.used.image, p.limits.image)}`}
-        <div class="pro-actions"></div>
+        <div class="tok-hero">
+          <div class="tok-hero-top"><span>Dein Guthaben</span>${status}</div>
+          ${t.unlimited ? '<div class="tok-big">Unbegrenzt</div><div class="settings-row-sub">Als Besitzer hast du keine Grenzen.</div>'
+            : t.enabled === false ? '<div class="settings-row-sub">Das Token-System ist auf diesem Server abgeschaltet.</div>'
+            : `<div class="tok-big">${nf(Math.floor(t.left))} <small>von ${nf(t.max)} Token</small></div>
+               <div class="pro-bar"><i style="width:${pct}%"></i></div>
+               <div class="settings-row-sub">${reset} · danach wieder ${nf(t.max)} (alle ${nf(plan.resetHours)} Std)</div>`}
+        </div>
+        ${p.unlimited || t.enabled === false ? '' : `
+        <div class="tok-plans">
+          <div class="tok-plan${p.pro ? '' : ' on'}"><b>Gratis</b><span class="tok-price">0 €</span><ul><li>${nf(t.free.max)} Token zum Start</li><li>Zurückgesetzt alle ${nf(t.free.resetHours)} Stunden</li><li>Alle Funktionen</li></ul></div>
+          <div class="tok-plan pro${p.pro ? ' on' : ''}"><b>Pro</b><span class="tok-price">${escapeHtml(p.billing.price || '16,99 € / Monat')}</span><ul><li>${nf(t.pro.max)} Token</li><li>Zurückgesetzt alle ${nf(t.pro.resetHours)} Stunden</li><li>Jederzeit kündbar</li></ul><div class="pro-actions"></div></div>
+        </div>
+        <div class="group-title">Was kostet was</div>
+        <div class="tok-table">${rows.map(([n, v, u]) => `<div><span>${n}</span><b>${nf(v)} Token</b><small>pro ${u}</small></div>`).join('')}</div>
+        <div class="settings-row-sub">Mit deinem Guthaben (${nf(t.max)}) sind das zum Beispiel ${buys(t.max)}. Dein Satz und die Antwort zählen beide mit; Musik kommt mit einer späteren Version.</div>`}
+        ${p.unlimited ? '<div class="pro-actions"></div>' : ''}
         ${p.billing.codes ? `<div class="group-title">Code einlösen</div><div class="pro-code"><input class="text-input" id="pro-code" placeholder="Code eingeben" autocomplete="off" spellcheck="false"><button class="btn" id="pro-redeem">Einlösen</button></div>` : ''}
-        ${legalLinks(legal) ? `<div class="settings-row-sub">Mit dem Kauf gelten unsere Bedingungen: ${[['terms', 'AGB'], ['privacy', 'Datenschutz'], ['imprint', 'Impressum']].filter(([k]) => legal[k]).map(([k, t]) => `<a href="${escapeHtml(legal[k])}" target="_blank" rel="noopener noreferrer">${t}</a>`).join(' · ')}</div>` : ''}
-        ${!p.billing.stripe && !p.billing.codes ? '<div class="note warn">Der Server hat noch keine Bezahlung eingerichtet (STRIPE_* in der .env, siehe README).</div>' : ''}`;
+        ${legalLinks(legal) ? `<div class="settings-row-sub">Mit dem Kauf gelten unsere Bedingungen: ${[['terms', 'AGB'], ['privacy', 'Datenschutz'], ['imprint', 'Impressum']].filter(([k]) => legal[k]).map(([k, t2]) => `<a href="${escapeHtml(legal[k])}" target="_blank" rel="noopener noreferrer">${t2}</a>`).join(' · ')}</div>` : ''}
+        ${!p.billing.stripe && !p.billing.codes && !p.unlimited ? '<div class="note warn">Der Server hat noch keine Bezahlung eingerichtet (STRIPE_* in der .env, siehe README).</div>' : ''}`;
       const actions = wrap.querySelector('.pro-actions');
-      if (!p.unlimited && !p.pro && p.billing.stripe) {
-        const b = el('button', { className: 'btn primary' }, `<b>AI Core Pro kaufen${p.billing.price ? ` · ${escapeHtml(p.billing.price)}` : ''}</b>`);
+      if (actions && !p.unlimited && !p.pro && p.billing.stripe) {
+        const b = el('button', { className: 'btn primary' }, `<b>AI Core Pro kaufen</b>`);
         b.addEventListener('click', async () => { b.disabled = true; try { location.href = await api.proCheckout(returnUrl()); } catch (e) { b.disabled = false; fail(e); } });
         actions.appendChild(b);
       }
-      if (p.manageable) {
+      if (actions && p.manageable) {
         const b = el('button', { className: 'btn' }, 'Abo verwalten oder kündigen');
         b.addEventListener('click', async () => { try { location.href = await api.proPortal(returnUrl()); } catch (e) { fail(e); } });
         actions.appendChild(b);
@@ -554,17 +575,18 @@ export function openSettingsModal({ store, sync = null, initialTab, authRequired
       wrap.querySelector('#pro-redeem')?.addEventListener('click', async () => {
         const input = wrap.querySelector('#pro-code');
         if (!input.value.trim()) return input.focus();
-        try { draw({ ...(await api.proRedeem(input.value.trim())), billing: p.billing }); showToast('Pro ist aktiv. Danke!'); } catch (e) { fail(e); }
+        try { await api.proRedeem(input.value.trim()); showToast('Pro ist aktiv. Danke!'); window.dispatchEvent(new Event('aicore:tokens-stale')); load(); } catch (e) { fail(e); }
       });
     };
-    api.plan().then(draw).catch(e => { wrap.innerHTML = `<div class="note warn">${escapeHtml(e.message || 'Tarif konnte nicht geladen werden')}</div>`; });
+    const load = () => api.plan().then(draw).catch(e => { wrap.innerHTML = `<div class="note warn">${escapeHtml(e.message || 'Tarif konnte nicht geladen werden')}</div>`; });
+    load();
     return wrap;
   }
 
   function renderAbout() {
     const wrap = el('div');
     wrap.innerHTML = `
-      <div class="note"><b>AI Core 5.0</b> · deine eigene AI-Chat-Plattform von OrbitLabs.<br>Lokale Modelle über Ollama, optional DeepSeek V4.1 Flash in der Cloud.</div>
+      <div class="note"><b>AI Core 4.0</b> · deine eigene AI-Chat-Plattform von OrbitLabs.<br>Lokale Modelle über Ollama, optional DeepSeek V4.1 Flash in der Cloud.</div>
       <div class="group-title">Tastenkürzel</div>
       <div class="settings-row-sub" style="line-height:2">
         <kbd>Enter</kbd> senden · <kbd>Shift</kbd>+<kbd>Enter</kbd> neue Zeile<br>

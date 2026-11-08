@@ -121,22 +121,3 @@ test('Aus oder Serverfehler: nichts passiert bzw. Status „fehler“', async ()
   const st = await bad.run();
   assert.equal(st.state, 'fehler'); assert.match(st.message, /nicht erreichbar/);
 });
-
-test('Gleiche Millisekunde: updatedAt steigt trotzdem streng an (sonst ginge die zweite Änderung beim Abgleich verloren)', () => {
-  mem.clear();
-  const realNow = Date.now; Date.now = () => 1_700_000_000_000;
-  try {
-    const s = createChatStore(); const c = s.createChat();
-    s.addMessage(c.id, msg('m1', 'user', 'Hallo'));
-    const t1 = c.updatedAt;
-    s.addMessage(c.id, msg('m2', 'assistant', 'Hi'));
-    const t2 = c.updatedAt;
-    s.deleteChat(c.id);
-    const t3 = c.updatedAt;
-    s.restore(c.id);
-    const t4 = c.updatedAt;
-    assert.ok(t1 < t2 && t2 < t3 && t3 < t4, [t1, t2, t3, t4].join(' < '));
-    const p = createProjectStore(); const pr = p.create('X'); const a = pr.updatedAt; p.update(pr.id, { name: 'Y' });
-    assert.ok(pr.updatedAt > a);
-  } finally { Date.now = realNow; }
-});

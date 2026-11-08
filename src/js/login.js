@@ -5,7 +5,7 @@
 // Das Firebase-SDK wird erst geladen, wenn der Login wirklich angezeigt wird.
 
 import { api } from './api.js';
-import { serverBase, isCrossOrigin, isPrivateHost, normalizeServer, setServerBase, DEFAULT_SERVER } from './config.js';
+import { findServer, serverBase, isCrossOrigin, isPrivateHost, normalizeServer, setServerBase, DEFAULT_SERVER } from './config.js';
 
 const SDK_BASE = 'https://www.gstatic.com/firebasejs/10.14.1';
 
@@ -169,28 +169,28 @@ export function mountLogin({ methods, onSuccess, legal = {} }) {
   }).join('') + (hasPhone ? `<button type="button" class="btn lg-social" data-action="phone">${ICON.phone}<span>Weiter mit Handynummer</span></button>` : '');
 
   const { el, $, say, busy } = shell(`
-    <h2 id="lg-title">AI Core</h2>
-    <p class="lg-sub">Melde dich an, um zu starten.</p>
-    ${isCrossOrigin() ? `<button type="button" class="lg-server" data-action="server" title="Server-Adresse ändern"><i class="lg-dot"></i><span>${esc(hostLabel())}</span><u>ändern</u></button>` : ''}
+    <h2 id="lg-title">Willkommen bei AI Core</h2>
+    <p class="lg-sub">Melde dich an, um weiterzumachen.</p>
+    ${isCrossOrigin() ? `<button type="button" class="lg-server" data-action="server" title="Server-Adresse ändern"><i class="lg-dot"></i><span>Verbunden mit ${esc(hostLabel())}</span><u>ändern</u></button>` : ''}
     <div class="lg-msg" role="alert" hidden></div>
 
     <section data-pane="firebase" ${fb ? '' : 'hidden'}>
+      ${hasEmail ? `
+      <div class="lg-tabs" role="tablist"><button type="button" role="tab" class="on" data-tab="login">Anmelden</button><button type="button" role="tab" data-tab="register">Registrieren</button></div>
+      <form class="lg-form" data-form="email" novalidate>
+        <label data-field="name" hidden>Name<input class="text-input" name="name" autocomplete="name" placeholder="Dein Name"></label>
+        <label>E-Mail<input class="text-input" type="email" name="email" autocomplete="username" inputmode="email" placeholder="name@beispiel.at"></label>
+        <label>Passwort<span class="lg-pw"><input class="text-input" type="password" name="password" autocomplete="current-password" placeholder="Dein Passwort"><button type="button" class="icon-btn" data-action="peek" aria-label="Passwort anzeigen" title="Passwort anzeigen">${EYE}</button></span></label>
+        <button class="btn primary block" type="submit" data-role="go"><b>Anmelden</b></button>
+        <button type="button" class="link-btn" data-action="reset">Passwort vergessen?</button>
+      </form>` : ''}
+      ${socialHtml && hasEmail ? '<div class="lg-divider"><span>oder weiter mit</span></div>' : ''}
       ${socialHtml ? `<div class="lg-stack">${socialHtml}</div>` : ''}
       ${hasPhone ? `<form class="lg-phone" data-form="phone" hidden novalidate>
         <label>Handynummer<input class="text-input" type="tel" name="tel" autocomplete="tel" placeholder="+43 660 1234567"></label>
         <button class="btn primary block" type="submit"><b>SMS-Code senden</b></button>
         <label class="lg-code" hidden>SMS-Code<input class="text-input" name="code" inputmode="numeric" autocomplete="one-time-code" placeholder="123456"></label>
         <button class="btn primary block lg-code" type="button" data-action="phone-confirm" hidden><b>Bestätigen</b></button>
-      </form>` : ''}
-      ${socialHtml && hasEmail ? '<div class="lg-divider"><span>oder mit E-Mail</span></div>' : ''}
-      ${hasEmail ? `
-      <div class="lg-tabs" role="tablist"><button type="button" role="tab" class="on" data-tab="login">Anmelden</button><button type="button" role="tab" data-tab="register">Registrieren</button></div>
-      <form class="lg-form" data-form="email" novalidate>
-        <label data-field="name" hidden>Name<input class="text-input" name="name" autocomplete="name" placeholder="Dein Name"></label>
-        <label>E-Mail<input class="text-input" type="email" name="email" autocomplete="username" inputmode="email" placeholder="name@beispiel.at"></label>
-        <label>Passwort<span class="lg-pw"><input class="text-input" type="password" name="password" autocomplete="current-password" placeholder="Mindestens 8 Zeichen"><button type="button" class="icon-btn" data-action="peek" aria-label="Passwort anzeigen" title="Passwort anzeigen">${EYE}</button></span></label>
-        <button class="btn primary block" type="submit" data-role="go"><b>Anmelden</b></button>
-        <button type="button" class="link-btn" data-action="reset">Passwort vergessen?</button>
       </form>` : ''}
       ${hiddenSome ? '<p class="lg-note">Google, GitHub und Handynummer gehen nur über die GitHub-Seite, nicht über die Heimnetz-Adresse.</p>' : ''}
       <div id="login-recaptcha"></div>
@@ -212,7 +212,7 @@ export function mountLogin({ methods, onSuccess, legal = {} }) {
       onSuccess({ user: result?.user || null });
     } catch (e) {
       busy(btn, false);
-      if (e?.network) say('Der Server ist nicht erreichbar. Läuft er, und bist du im Heimnetz?');
+      if (e?.network) say('Der Server antwortet nicht. Prüfe deine Verbindung oder wähle oben einen anderen Server.');
       else say(explain(e));
     }
   }
@@ -321,9 +321,9 @@ export function mountConnect({ error = '', onConnected }) {
     <p class="lg-sub">Die Oberfläche läuft hier, die KI auf deinem Server.</p>
     <div class="lg-msg" role="alert" hidden></div>
     <form class="lg-form" novalidate>
-      <label>Server-Adresse<input class="text-input" name="server" inputmode="url" autocapitalize="off" spellcheck="false" value="${esc(serverBase() || DEFAULT_SERVER)}" placeholder="http://192.168.1.190:3000"></label>
+      <label>Server-Adresse<input class="text-input" name="server" inputmode="url" autocapitalize="off" spellcheck="false" value="${esc(serverBase() || DEFAULT_SERVER)}" placeholder="http://192.168.1.190:3000 oder https://…"></label>
       <button class="btn primary block" type="submit"><b>Verbinden</b></button>
-      <button type="button" class="link-btn" data-action="default">Standard verwenden</button>
+      <button type="button" class="link-btn" data-action="default">Automatisch suchen</button>
     </form>
     <details class="lg-help"><summary>Verbindung klappt nicht?</summary><ul>
       <li>Läuft der Server? Auf dem Tiny: <code>sudo systemctl status ai-core</code></li>
@@ -351,7 +351,13 @@ export function mountConnect({ error = '', onConnected }) {
     }
   };
   form.addEventListener('submit', (e) => { e.preventDefault(); connect(form.elements.server.value); });
-  $('[data-action="default"]').addEventListener('click', () => { form.elements.server.value = DEFAULT_SERVER; connect(DEFAULT_SERVER); });
+  $('[data-action="default"]').addEventListener('click', async () => {
+    setServerBase(''); say(''); busy(form.querySelector('.primary'), true);
+    const found = await findServer(5000);
+    busy(form.querySelector('.primary'), false);
+    if (!found) return say('Kein Server gefunden. Prüfe, ob er läuft und du im richtigen Netzwerk bist.');
+    form.elements.server.value = found; connect(found);
+  });
 
   document.body.appendChild(el);
   setTimeout(() => form.elements.server.focus(), 30);

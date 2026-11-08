@@ -18,18 +18,19 @@ import { createPreview } from './preview.js';
 import { createShare, readShare, deleteShare, shareEnabled } from './share.js';
 import { generateImage, imageEnabled } from './image.js';
 import { startVideo, videoStatus, videoFile, videoEnabled } from './video.js';
-import { planStatus, reserve, refund, grantPro, revokePro, proInfo, redeemCode, codesEnabled } from './plan.js';
+import { tokenStatus, planStatus, reserve, refund, grantPro, revokePro, proInfo, redeemCode, codesEnabled, spendTokens, refundTokens, costs, wordCount } from './plan.js';
 import { webSearch, searchEnabled, readPage } from './search.js';
 import * as library from './library.js';
-import { startPull, pullStatus, cancelPull, deleteModel, validName, SUGGESTED, diskFree } from './models.js';
+import { startPull, pullStatus, cancelPull, deleteModel, SUGGESTED, diskFree } from './models.js';
 import { getLogs } from './logbuffer.js';
+const stripThinkText = (t) => String(t ?? '').replace(/<think>[\s\S]*?(<\/think>|$)/g, '');
 import { isOwnerSession } from './owner.js';
 import { syncEnabled, pull as syncPull, push as syncPush, prune as syncPrune, wipe as syncWipe } from './sync.js';
 import { record, snapshot } from './metrics.js';
 import { parseApiKeys, checkApiKey, errorBody, toInternal, createThinkFilter, completionId, chunk, completion, modelList, estimateTokens } from './openai.js';
 import { stripeEnabled, createCheckout, confirmCheckout, subscriptionState, createPortal } from './stripe.js';
 
-export const VERSION = '5.0.0';
+export const VERSION = '5.1.0';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024, files: 1 } });
 
@@ -146,7 +147,15 @@ router.post('/upload', uploadLimiter, (req, res, next) => {
 }, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Keine Datei empfangen' });
   try {
-    res.json(await processUploadedFile(req.file));
+    const info = await processUploadedFile(req.file);
+    const words = wordCount(info.extractedText);
+    if (words) {
+      const acct = accountOf(req);
+      const t = spendTokens(acct.key, words * costs().fileWord, acct);
+      if (!t.ok) return res.status(t.status).json({ error: `Die Datei hat ${words} Wörter. ${t.error}` });
+      info.tokens = t.spent;
+    }
+    res.json(info);
   } catch (e) {
     console.error('upload processing failed', e);
     res.status(500).json({ error: 'Verarbeitung fehlgeschlagen' });
@@ -218,8 +227,11 @@ router.post('/image', imageLimiter, async (req, res) => {
   if (!prompt) return res.status(400).json({ error: 'Bitte beschreibe das Bild.' });
   if (imageBusy) return res.status(429).json({ error: 'Es wird gerade ein Bild erzeugt. Bitte gleich erneut.' });
   const acct = accountOf(req);
+  const imgCost = costs().image;
+  const tk = spendTokens(acct.key, imgCost, acct);
+  if (!tk.ok) return res.status(tk.status).json({ error: tk.error });
   const q = reserve(acct.key, 'image', acct);
-  if (!q.ok) return res.status(q.status).json({ error: q.error });
+  if (!q.ok) { refundTokens(acct.key, tk.spent); return res.status(q.status).json({ error: q.error }); }
   imageBusy = true;
   const ac = new AbortController();
   res.on('close', () => ac.abort());
@@ -228,7 +240,7 @@ router.post('/image', imageLimiter, async (req, res) => {
     const { b64, mime } = await generateImage(prompt, ac.signal);
     res.json({ image: `data:${mime};base64,${b64}` });
   } catch (e) {
-    refund(acct.key, 'image');
+    refund(acct.key, 'image'); refundTokens(acct.key, tk.spent);
     if (!ac.signal.aborted) { console.warn('[image]', e.message); res.status(502).json({ error: e.message || 'Bild fehlgeschlagen' }); }
   } finally { imageBusy = false; }
 });
@@ -240,11 +252,14 @@ router.post('/video', videoLimiter, async (req, res) => {
   const prompt = String(req.body?.prompt || '').trim().slice(0, 1500);
   if (!prompt) return res.status(400).json({ error: 'Bitte beschreibe das Video.' });
   const acct = accountOf(req);
+  const vidCost = (Number(process.env.VIDEO_SECONDS) || 4) * costs().videoSecond;
+  const tk = spendTokens(acct.key, vidCost, acct);
+  if (!tk.ok) return res.status(tk.status).json({ error: tk.error });
   const q = reserve(acct.key, 'video', acct);
-  if (!q.ok) return res.status(q.status).json({ error: q.error });
+  if (!q.ok) { refundTokens(acct.key, tk.spent); return res.status(q.status).json({ error: q.error }); }
   record('video', memKey(req));
-  try { res.status(202).json({ id: await startVideo(prompt, { onFail: () => refund(acct.key, 'video') }) }); }
-  catch (e) { refund(acct.key, 'video'); console.warn('[video]', e.message); res.status(502).json({ error: e.message }); }
+  try { res.status(202).json({ id: await startVideo(prompt, { onFail: () => { refund(acct.key, 'video'); refundTokens(acct.key, tk.spent); } }) }); }
+  catch (e) { refund(acct.key, 'video'); refundTokens(acct.key, tk.spent); console.warn('[video]', e.message); res.status(502).json({ error: e.message }); }
 });
 router.get('/video/:id', lightLimiter, async (req, res) => {
   try { res.json(await videoStatus(req.params.id)); }
@@ -276,7 +291,7 @@ function returnBase(req) {
 router.get('/plan', lightLimiter, async (req, res) => {
   const acct = accountOf(req);
   await syncStripe(acct.key);
-  res.json({ ...planStatus(acct.key, acct), billing: { stripe: stripeEnabled(), codes: codesEnabled(), price: process.env.PRO_PRICE_LABEL || '' } });
+  res.json({ ...planStatus(acct.key, acct), billing: { stripe: stripeEnabled(), codes: codesEnabled(), price: process.env.PRO_PRICE_LABEL || '16,99 € / Monat' } });
 });
 
 router.post('/pro/checkout', proLimiter, async (req, res) => {
@@ -336,6 +351,18 @@ router.post('/chat/stream', chatLimiter, async (req, res) => {
     return res.status(429).json({ error: 'Der Server bearbeitet gerade andere Anfragen. Bitte gleich erneut senden.' });
   }
 
+  // Token: deine neue Nachricht (Wörter) und Dateien, die jetzt zum ersten Mal analysiert werden, kosten vorab.
+  const acct = accountOf(req);
+  const lastUser = [...body.messages].reverse().find(m => m?.role === 'user');
+  const c = costs();
+  const analyzed = (Array.isArray(lastUser?.attachments) ? lastUser.attachments : []).reduce((n, a) => n + (typeof a?.text === 'string' ? wordCount(a.text.slice(0, 60000)) : 0), 0);
+  const inCost = wordCount(typeof lastUser?.content === 'string' ? lastUser.content : '') * c.word + analyzed * c.analyzeWord;
+  const paid = spendTokens(acct.key, inCost, acct);
+  if (!paid.ok) return res.status(paid.status).json({ error: paid.error });
+  const probe = spendTokens(acct.key, 0.25, acct);      // bleibt überhaupt noch etwas für die Antwort übrig?
+  if (!probe.ok) { refundTokens(acct.key, paid.spent); return res.status(probe.status).json({ error: probe.error }); }
+  refundTokens(acct.key, probe.spent);
+
   const cfg = getConfig();
   let system = typeof body.system === 'string' && body.system.trim() ? body.system.trim().slice(0, Number(process.env.MAX_SYSTEM_CHARS) || 30000) : cfg.systemPrompt;
   let usedMemory = false;
@@ -361,13 +388,14 @@ router.post('/chat/stream', chatLimiter, async (req, res) => {
 
   activeChats += 1;
   record('chat', memKey(req));
+  let reply = '';
   try {
     if (ctx.trimmed) send({ notice: 'trimmed', dropped: ctx.dropped });
     if (usedMemory) send({ notice: 'memory' });
     ctx.notices.forEach(n => send({ notice: n }));
     await streamAiResponse(
       { messages: ctx.messages, model: requested, system, temperature },
-      (delta, meta) => send({ delta, demo: meta?.demo || false }),
+      (delta, meta) => { reply += delta; send({ delta, demo: meta?.demo || false }); },
       ac.signal,
       (meta) => { send({ meta }); if (meta?.tokens) record('tokens', '', meta.tokens); },
     );
@@ -377,6 +405,8 @@ router.post('/chat/stream', chatLimiter, async (req, res) => {
   } finally {
     clearInterval(ping);
     activeChats -= 1;
+    spendTokens(acct.key, wordCount(stripThinkText(reply)) * c.word, { ...acct, strict: false });   // sichtbare Antwort in Wörtern
+    send({ tokens: tokenStatus(acct.key, acct) });
     if (!res.writableEnded) {
       res.write('data: [DONE]\n\n');
       res.end();
@@ -408,7 +438,8 @@ router.post('/library', libLimiter, (req, res) => {
 });
 router.delete('/library/:id', libLimiter, (req, res) => {
   if (!library.libraryEnabled()) return libOff(res);
-  res.status(library.remove(accountOf(req).key, String(req.params.id)) ? 200 : 404).json({ ok: true });
+  const ok = library.remove(accountOf(req).key, String(req.params.id));
+  res.status(ok ? 200 : 404).json({ ok });
 });
 router.post('/library/search', libLimiter, (req, res) => {
   if (!library.libraryEnabled()) return libOff(res);
@@ -467,7 +498,6 @@ router.get('/admin/status', lightLimiter, async (req, res) => {
 
 // ---------- Modelle und Meldungen verwalten (nur Besitzer) ----------
 const ownerOnly = (req, res) => { if (isOwner(req)) return true; res.status(403).json({ error: 'Nur für den Besitzer.' }); return false; };
-
 router.get('/admin/models', lightLimiter, async (req, res) => {
   if (!ownerOnly(req, res)) return;
   const cfg = getConfig();

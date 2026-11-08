@@ -51,14 +51,89 @@ export function planStatus(key, { unlimited = false, now = Date.now() } = {}) {
     unlimited, pro, until: pro ? r.pro.until : null, source: pro ? r.pro.source : null,
     manageable: Boolean(pro && r.pro.customer),
     limits: limits(pro), used: { video: used.video || 0, image: used.image || 0 },
+    tokens: tokenStatus(key, { unlimited, now }),
   };
+}
+
+// ---------- Token-Guthaben ----------
+// Jede Aktion kostet Token (Wörter, Bilder, Videosekunden …). Das Guthaben gilt für ein Zeitfenster, das mit der
+// ersten Nutzung beginnt und nach Ablauf zurückgesetzt wird: Gratis 4 000 Token alle 4 Stunden, Pro 10 000 alle 2 Stunden.
+// Intern wird in Hundertstel-Token gerechnet (0,25 Token = 25), damit keine Rundungsfehler entstehen.
+export const tokensEnabled = () => process.env.TOKENS !== 'false';
+const fnum = (v, d) => { const n = Number(String(v ?? '').replace(',', '.')); return v !== undefined && v !== '' && Number.isFinite(n) && n >= 0 ? n : d; };
+const cents = (t) => Math.round(t * 100);
+const tok = (c) => Math.round(c) / 100;
+
+/** Kosten pro Einheit in Token. */
+export function costs() {
+  const e = process.env;
+  return {
+    word: fnum(e.TOKEN_COST_WORD, 0.25),           // pro Wort im Chat (deine Nachricht und die Antwort)
+    image: fnum(e.TOKEN_COST_IMAGE, 45.9),         // pro erzeugtem Bild
+    videoSecond: fnum(e.TOKEN_COST_VIDEO_SECOND, 15.9),
+    fileWord: fnum(e.TOKEN_COST_FILE_WORD, 0.5),   // pro Wort in einer hochgeladenen Datei
+    analyzeWord: fnum(e.TOKEN_COST_ANALYZE_WORD, 0.75),  // pro Wort einer Datei, das die KI analysiert
+    musicSecond: fnum(e.TOKEN_COST_MUSIC_SECOND, 10),
+  };
+}
+export function tokenPlan(pro) {
+  const e = process.env;
+  return pro
+    ? { max: fnum(e.PRO_TOKENS, 10000), resetHours: fnum(e.PRO_RESET_HOURS, 2) }
+    : { max: fnum(e.FREE_TOKENS, 4000), resetHours: fnum(e.FREE_RESET_HOURS, 4) };
+}
+export const wordCount = (s) => (String(s ?? '').match(/\S+/g) || []).length;
+
+function wallet(key, now) {
+  const pro = isPro(key, now), plan = tokenPlan(pro), resetMs = plan.resetHours * 3600000;
+  const r = rec(key);
+  if (!r.tok || typeof r.tok.used !== 'number') r.tok = { used: 0, start: 0 };
+  if (r.tok.start && now >= r.tok.start + resetMs) r.tok = { used: 0, start: 0 };     // Fenster abgelaufen: zurückgesetzt
+  return { r, pro, max: cents(plan.max), resetMs, resetHours: plan.resetHours };
+}
+
+export function tokenStatus(key, { unlimited = false, now = Date.now() } = {}) {
+  const base = { enabled: tokensEnabled(), costs: costs(), free: tokenPlan(false), pro: tokenPlan(true) };
+  if (!tokensEnabled()) return base;
+  if (unlimited) return { ...base, unlimited: true };
+  const w = wallet(key, now), t = w.r.tok;
+  return { ...base, max: tok(w.max), used: tok(Math.min(t.used, w.max)), left: tok(Math.max(0, w.max - t.used)), resetHours: w.resetHours, resetAt: t.start ? t.start + w.resetMs : null };
+}
+
+const span = (ms) => { const m = Math.max(1, Math.ceil(ms / 60000)); return m >= 60 ? `${Math.floor(m / 60)} Std ${m % 60} Min` : `${m} Min`; };
+
+/**
+ * Token abziehen. strict: nur wenn das Guthaben reicht (sonst 402, nichts wird abgezogen).
+ * Ohne strict (Antwort ist schon geschrieben) wird bis zur Obergrenze abgezogen.
+ */
+export function spendTokens(key, amount, { unlimited = false, strict = true, now = Date.now() } = {}) {
+  const c = cents(amount);
+  if (!tokensEnabled() || unlimited || c <= 0) return { ok: true, spent: 0 };
+  const w = wallet(key, now), t = w.r.tok;
+  if (strict && t.used + c > w.max) {
+    const left = Math.max(0, w.max - t.used), when = t.start ? ` Zurückgesetzt wird in ${span(t.start + w.resetMs - now)}.` : '';
+    return { ok: false, status: 402, error: `Dein Token-Guthaben reicht dafür nicht (${tok(left)} übrig, ${tok(c)} nötig).${when}${w.pro ? '' : ' Mit AI Core Pro bekommst du mehr: Einstellungen → Pro.'}`, left: tok(left) };
+  }
+  if (!t.start) t.start = now;
+  const before = t.used;
+  t.used = Math.min(w.max, t.used + c);
+  save();
+  return { ok: true, spent: tok(t.used - before), spentCents: t.used - before };
+}
+
+export function refundTokens(key, amount, { now = Date.now() } = {}) {
+  const c = cents(amount);
+  if (!tokensEnabled() || c <= 0 || !load().users[key]?.tok) return;
+  const w = wallet(key, now);
+  w.r.tok.used = Math.max(0, w.r.tok.used - c);
+  save();
 }
 
 /** Kontingent vorab reservieren. Bei Fehlschlag der Erzeugung mit refund() zurückgeben. */
 export function reserve(key, kind, { unlimited = false, now = Date.now() } = {}) {
   if (!KINDS[kind]) return { ok: false, status: 400, error: 'Unbekannte Art' };
   const m = monthKey(now), d = load();
-  if (!unlimited) {
+  if (!unlimited && !tokensEnabled()) {
     const pro = isPro(key, now), max = limits(pro)[kind];
     const used = d.users[key]?.usage?.[m]?.[kind] || 0;
     if (used >= max) {

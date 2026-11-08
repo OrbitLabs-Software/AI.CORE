@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 process.env.AICORE_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'aicore-plan-'));
+process.env.TOKENS = 'false';   // diese Tests prüfen die alten Monatsgrenzen; Token siehe tokens.test.mjs
 const plan = await import('../server/plan.js');
 const stripe = await import('../server/stripe.js');
 const video = await import('../server/video.js');

@@ -112,6 +112,7 @@ export const api = {
   async models() {
     const res = await request('/api/models');
     if (!res.ok) throw new ApiError(await errorMessage(res), res.status);
+    window.dispatchEvent(new Event('aicore:tokens-stale'));
     return res.json();
   },
 
@@ -194,6 +195,7 @@ export const api = {
   async share(chat) {
     const res = await jsonPost('/api/share', { chat: { title: chat.title, messages: chat.messages.filter(m => !m.media).map(m => ({ role: m.role, content: m.content, attachments: (m.attachments || []).map(a => ({ name: a.name })) })) } });
     if (!res.ok) throw new ApiError(await errorMessage(res), res.status);
+    window.dispatchEvent(new Event('aicore:tokens-stale'));
     return (await res.json()).id;
   },
   async unshare(id) { await request(`/api/share/${encodeURIComponent(id)}`, { method: 'DELETE' }); },
@@ -206,6 +208,7 @@ export const api = {
   async image(prompt) {
     const res = await jsonPost('/api/image', { prompt });
     if (!res.ok) throw new ApiError(await errorMessage(res), res.status);
+    window.dispatchEvent(new Event('aicore:tokens-stale'));
     return (await res.json()).image;
   },
   async videoStart(prompt) {
@@ -258,6 +261,7 @@ export const api = {
     if (!res.ok || !res.body) throw new ApiError(await errorMessage(res), res.status);
     for await (const event of readSse(res)) {
       if (event.demo) this.demoMode = true;
+      if (event.tokens) window.dispatchEvent(new CustomEvent('aicore:tokens', { detail: event.tokens }));
       yield event;
     }
   },
