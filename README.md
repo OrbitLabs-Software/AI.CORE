@@ -103,11 +103,13 @@ Im Heimnetz geht alles über `http://192.168.1.190:3000`. Von unterwegs braucht 
 
 **Video über Hugging Face:** `HF_TOKEN` in der `.env` eintragen (Token mit Berechtigung „Inference Providers“) und auf dem Server `npm install @huggingface/inference` ausführen. Welche Modelle gerade Videos können, zeigt `https://huggingface.co/api/models?inference_provider=all&pipeline_tag=text-to-video`; das Modell steht in `HF_VIDEO_MODEL`. Ein Video kostet Guthaben beim Anbieter. Das kleine Gratis-Guthaben eines Kontos gilt für den ganzen Server, nicht pro Nutzer, und reicht nur für wenige Clips. Setze deshalb `VIDEO_MAX_PER_MONTH_TOTAL` auf eine Zahl, die dein Budget verträgt.
 
-**Kontingente:** Pro Konto und Kalendermonat. Voreinstellung gratis 1 Video und 10 Bilder, Pro 20 Videos und 200 Bilder. Wer in `OWNER_UIDS` steht, hat keine Grenzen.
+**Token-Guthaben:** Alles, was jemand nutzt, kostet Token. Voreinstellung: Gratis 4 000 Token, Zurücksetzen alle 4 Stunden; Pro 10 000 Token für 16,99 € im Monat, Zurücksetzen alle 2 Stunden. Das Zeitfenster beginnt mit der ersten Nutzung nach dem Zurücksetzen. Preise: 1 Wort im Chat (Frage und Antwort) 0,25 · 1 Wort in einer hochgeladenen Datei 0,5 (beim Hochladen) · 1 analysiertes Wort 0,75 (beim Öffnen der Datenanalyse) · 1 Bild 45,9 · 1 Sekunde Video 15,9 · 1 Sekunde Musik 10. Alles lässt sich in der `.env` ändern (`FREE_TOKENS`, `PRO_TOKENS`, `*_RESET_HOURS`, `TOKEN_RATE_*`). Wer in `OWNER_UIDS` steht, hat keine Grenzen. Die Antwort im Chat wird nach den tatsächlich erzeugten Wörtern abgebucht, der Chat stoppt also nicht mitten im Satz; das Guthaben kann dabei nicht unter null fallen. Misslingt ein Bild oder Video, gibt es die Token zurück. Musik: Der Preis ist hinterlegt, eine Musikfunktion gibt es in AI Core noch nicht. Die Schnittstelle `/v1` für andere Programme zählt nicht mit.
+
+**Pro bezahlen (Stripe):** In Stripe ein Produkt „AI Core Pro“ mit dem Preis 16,99 € pro Monat (wiederkehrend) anlegen, die Preis-ID (`price_…`) als `STRIPE_PRICE_ID` und den geheimen Schlüssel als `STRIPE_SECRET_KEY` in die `.env`, `PRO_PRICE_LABEL=16,99 € pro Monat`, Server neu starten. Dann erscheint unter Einstellungen → Pro der Kaufknopf. Kündigen geht über „Abo verwalten“.
 
 **Pro verkaufen mit Stripe:**
 1. In Stripe ein Produkt mit einem Abo-Preis anlegen, die Preis-ID (`price_...`) kopieren.
-2. In der `.env`: `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`, `PRO_PRICE_LABEL` (`16,99 € / Monat`) und für den Livebetrieb `PUBLIC_URL` (deine GitHub-Seite).
+2. In der `.env`: `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`, `PRO_PRICE_LABEL` (zum Beispiel `4,99 € / Monat`) und für den Livebetrieb `PUBLIC_URL` (deine GitHub-Seite).
 3. Im Stripe-Dashboard das Kundenportal einschalten, damit „Abo verwalten“ funktioniert.
 4. Erst im Testmodus ausprobieren (Testkarte 4242 4242 4242 4242).
 
@@ -204,11 +206,12 @@ ai-core/
 ```
 
 
-## Token und Pro
+## Coder Ultimate und Desktop-Programme
 
-Jede Aktion kostet Token: **Wort im Chat 0,25** (deine Nachricht und die Antwort), **Bild 45,9**, **Video 15,9 pro Sekunde**, **Wort in einer hochgeladenen Datei 0,50**, **analysiertes Wort 0,75** (Dateitext, der mit einer Nachricht an die KI geht), **Musik 10 pro Sekunde** (Preis ist hinterlegt, die Funktion kommt später).
+**Bauen:** Die Programme entstehen auf GitHub. Auf GitHub unter „Actions“ den Ablauf „Programme bauen“ starten (oder einen Tag wie `v5.2.0` setzen, dann liegen die Dateien unter „Releases“). Ergebnis: Coder als `ai-core-coder-win.exe`, `-macos-arm64`, `-macos-x64`, `-linux`; AI Core als `.exe`, `.dmg`, `.AppImage` und `.deb`. Es wird nicht signiert, Windows (SmartScreen) und macOS warnen beim ersten Start.
 
-- **Gratis:** 4 000 Token zum Start, nach 4 Stunden wieder 4 000.
-- **Pro (16,99 € / Monat):** 10 000 Token, nach 2 Stunden wieder 10 000.
-- Das Zeitfenster beginnt mit der ersten Nutzung. Der Besitzer und Server ohne Anmeldung haben keine Grenze.
-- Zahlung über Stripe: In Stripe ein Produkt mit einem monatlichen Preis von 16,99 € anlegen, die Preis-ID als `STRIPE_PRICE_ID` und den Geheimschlüssel als `STRIPE_SECRET_KEY` in die `.env`. Alle Preise und Mengen stehen in der `.env` (`TOKEN_COST_*`, `FREE_*`, `PRO_*`).
+**Coder benutzen:** In AI Core unter Einstellungen → Pro einen Schlüssel erzeugen (nur mit Pro). Dann im Projektordner `coder login` (Serveradresse und Schlüssel eintragen) und `coder` starten, oder direkt `coder "Schreibe ein Programm, das …"`. Tests laufen in einem Linux-Container und brauchen **Docker** (Windows/Mac: Docker Desktop, Linux: `docker.io`). Beim ersten Befehl baut Coder die Linux-Umgebung selbst (einige Minuten). Die Umgebung sieht nur den Projektordner, hat standardmäßig kein Netzwerk (`--net` erlaubt es, z. B. für `pip install`), höchstens 2 GB Speicher und 2 Prozessorkerne. Ohne `--auto` fragt Coder vor jedem Befehl und jeder Datei. `coder sandbox-reset` löscht die Umgebung. Lokal ohne Programm: `node coder/coder.mjs`.
+
+**Grenzen:** Die Docker-Umgebung ist eine Schutzwand, aber kein Tresor: Führe nur Projekte aus, denen du traust. Coder schreibt nur im Projektordner, Befehle laufen nur im Linux, nie direkt auf deinem PC.
+
+**Desktop-App:** Startet mit einem Fenster, in dem du die Serveradresse einträgst (Voreinstellung `http://192.168.1.190:3000`). Sie lädt die Oberfläche vom Server, du meldest dich wie im Browser an. Lokal testen: `cd desktop && npm install && npm start`.

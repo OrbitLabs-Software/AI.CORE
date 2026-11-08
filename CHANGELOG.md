@@ -1,10 +1,19 @@
 # Änderungen
 
-## 5.1.0 — Token und Pro
+## 5.2.0 — Coder Ultimate und Desktop-Apps
 
-- **Nutzungslimit in Token:** Wort 0,25 · Bild 45,9 · Videosekunde 15,9 · Wort in Datei 0,50 · analysiertes Wort 0,75 · Musiksekunde 10 (alle Preise in der `.env` änderbar).
-- **Gratis:** 4 000 Token, alle 4 Stunden zurückgesetzt. **Pro:** 10 000 Token für 16,99 € im Monat, alle 2 Stunden zurückgesetzt (Stripe).
-- Token-Anzeige oben, neue Pro-Seite mit Guthaben, Tarifen und Preisliste. Bei Fehlschlag (Bild, Video) gibt es die Token zurück.
+- **Coder Ultimate (Pro):** Programmierassistent für die Konsole als Programm für Windows (`.exe`), Mac und Linux (Ordner `coder/`). Er arbeitet im aktuellen Ordner (lesen, schreiben, Befehle) und testet Programme in einem eigenen, abgeschotteten Linux (Docker, ohne Netzwerk, mit Speicher- und CPU-Grenze). Dateien und Befehle werden vorher erfragt (`--auto`, `--yes` lassen das weg, `--net` erlaubt Netzwerk im Linux). Er nutzt dein Token-Guthaben.
+- **Coder-Schlüssel:** Einstellungen → Pro erzeugt einen Schlüssel (365 Tage, nur für den Coder, jederzeit widerrufbar). Der Server prüft bei jeder Anfrage, ob das Konto noch Pro hat. Neu: `POST/DELETE /api/coder/key`, `GET /api/coder/me`.
+- **AI Core als Desktop-App** (Ordner `desktop/`, Electron): `.exe` (Windows), `.dmg` (Mac), `.AppImage` und `.deb` (Linux). Die App lädt die Oberfläche von deinem Server; die Adresse ist änderbar (Strg/Cmd+Umschalt+S).
+- **Bauen:** `.github/workflows/build-apps.yml` baut alles auf GitHub (Actions → „Programme bauen“, oder Tag `v5.2.0` setzen: dann erscheinen die Dateien unter „Releases“). Ohne Zertifikate: Windows und macOS zeigen beim ersten Start eine Warnung.
+
+## 5.1.0 — Token-Guthaben
+
+- **Nutzung in Token statt Monatszähler:** Wort im Chat 0,25 · Wort in Datei 0,5 · analysiertes Wort 0,75 · Bild 45,9 · Sekunde Video 15,9 · Sekunde Musik 10 (Preis hinterlegt, noch keine Musikfunktion).
+- **Gratis:** 4 000 Token, Zurücksetzen alle 4 Stunden. **Pro:** 10 000 Token, Zurücksetzen alle 2 Stunden, 16,99 € pro Monat per Stripe.
+- Token-Anzeige in der oberen Leiste, Pro-Seite mit Guthaben, Tarifvergleich und Preisliste.
+- Fehlgeschlagene Bilder und Videos geben ihre Token zurück; Antworten werden nach den erzeugten Wörtern abgebucht.
+- Neu: `POST /api/tokens/analyze`; Upload meldet die abgebuchten Token. `FREE_*_PER_MONTH` und `PRO_*_PER_MONTH` entfallen, die Gesamt-Notbremse `*_MAX_PER_MONTH_TOTAL` bleibt.
 
 ## 5.0.0 — Aurora
 

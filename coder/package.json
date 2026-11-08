@@ -1,0 +1,10 @@
+{
+  "name": "ai-core-coder",
+  "version": "1.0.0",
+  "description": "AI Core Coder Ultimate: Programmierassistent für die Konsole, testet in einem abgeschotteten Linux (Docker)",
+  "type": "module",
+  "bin": { "coder": "coder.mjs" },
+  "pkg": { "scripts": ["coder.mjs"], "targets": ["node20-win-x64", "node20-macos-arm64", "node20-macos-x64", "node20-linux-x64"], "outputPath": "dist" },
+  "scripts": { "build": "npx --yes @yao-pkg/pkg . --out-path dist" },
+  "engines": { "node": ">=18" }
+}
