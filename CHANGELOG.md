@@ -1,5 +1,13 @@
 # Änderungen
 
+## 5.1.0 — Token-Guthaben
+
+- **Nutzung in Token statt Monatszähler:** Wort im Chat 0,25 · Wort in Datei 0,5 · analysiertes Wort 0,75 · Bild 45,9 · Sekunde Video 15,9 · Sekunde Musik 10 (Preis hinterlegt, noch keine Musikfunktion).
+- **Gratis:** 4 000 Token, Zurücksetzen alle 4 Stunden. **Pro:** 10 000 Token, Zurücksetzen alle 2 Stunden, 16,99 € pro Monat per Stripe.
+- Token-Anzeige in der oberen Leiste, Pro-Seite mit Guthaben, Tarifvergleich und Preisliste.
+- Fehlgeschlagene Bilder und Videos geben ihre Token zurück; Antworten werden nach den erzeugten Wörtern abgebucht.
+- Neu: `POST /api/tokens/analyze`; Upload meldet die abgebuchten Token. `FREE_*_PER_MONTH` und `PRO_*_PER_MONTH` entfallen, die Gesamt-Notbremse `*_MAX_PER_MONTH_TOTAL` bleibt.
+
 ## 5.0.0 — Aurora
 
 **Neues Design:** tiefes Tintenblau (dunkel) und helles Papier (hell), Verlauf nur bei Marke, Senden und aktivem Chat, Glas-Seitenleiste, schwebende Eingabe, Kacheln mit Tiefe, Schrift ohne Serifen. Neu gestaltete Anmeldung.
