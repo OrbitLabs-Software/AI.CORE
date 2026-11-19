@@ -1,0 +1,62 @@
+{
+  "name": "ai-core-desktop",
+  "version": "5.4.0",
+  "description": "AI Core als Programm für Windows, macOS und Linux",
+  "author": "OrbitLabs",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "prepare-web": "node scripts/copy-web.mjs",
+    "start": "npm run prepare-web && electron .",
+    "dist": "npm run prepare-web && electron-builder --publish never"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "@fortawesome/fontawesome-free": "^6.5.2"
+  },
+  "build": {
+    "appId": "at.orbitlabs.aicore",
+    "productName": "AI Core",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "web/**/*",
+      "build/icon.png"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "artifactName": "AI-Core-Setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.productivity",
+      "artifactName": "AI-Core-macOS-${arch}.${ext}"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Utility",
+      "artifactName": "AI-Core-Linux.${ext}"
+    }
+  }
+}

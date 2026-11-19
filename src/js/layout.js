@@ -1,3 +1,4 @@
+import { ico } from './icons.js';
 // layout.js — aufgeräumte Oberfläche: Werkzeug-Menü am Eingabefeld, Chips für aktive Einstellungen, Menü „Mehr“ oben.
 // Die bestehenden Auswahlfelder bleiben dieselben Elemente (mit ihren Handlern), sie ziehen nur um.
 
@@ -59,7 +60,7 @@ export function setupChips() {
       if (!sel || !sel.value || sel.value === def) continue;
       const chip = document.createElement('button');
       chip.type = 'button'; chip.className = 'mode-chip'; chip.title = 'Zurücksetzen';
-      chip.innerHTML = `<span>${label(sel.options[sel.selectedIndex]?.text || sel.value)}</span><b aria-hidden="true">✕</b>`;
+      chip.innerHTML = `<span>${label(sel.options[sel.selectedIndex]?.text || sel.value)}</span><b aria-hidden="true">${ico('xmark')}</b>`;
       chip.addEventListener('click', () => { sel.value = def; sel.dispatchEvent(new Event('change', { bubbles: true })); });
       row.appendChild(chip);
     }

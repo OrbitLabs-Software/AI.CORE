@@ -142,6 +142,14 @@ export const api = {
     return res.ok;
   },
 
+  // ---------- Coder Ultimate: Linux-Testlabor ----------
+  async coderStatus() { const res = await request('/api/coder/status'); if (!res.ok) throw new ApiError(await errorMessage(res), res.status); return res.json(); },
+  async coderRun(command, files) { const res = await jsonPost('/api/coder/run', { command, files, timeout: 60 }); if (!res.ok) throw new ApiError(await errorMessage(res), res.status); return res.json(); },
+  async coderShot(command, files) { const res = await jsonPost('/api/coder/screenshot', { command, files, delay: 3 }); if (!res.ok) throw new ApiError(await errorMessage(res), res.status); return res.json(); },
+  async coderFiles() { const res = await request('/api/coder/files'); if (!res.ok) throw new ApiError(await errorMessage(res), res.status); return (await res.json()).files; },
+  async coderReset() { const res = await request('/api/coder/files', { method: 'DELETE' }); if (!res.ok) throw new ApiError(await errorMessage(res), res.status); },
+  getToken() { try { return localStorage.getItem(TOKEN_KEY) || ''; } catch { return ''; } },
+
   // ---------- Links, Bibliothek, Modelle, Meldungen ----------
   async readUrl(url) { const res = await jsonPost('/api/read', { url }); if (!res.ok) throw new ApiError(await errorMessage(res), res.status); return res.json(); },
   async libraryList() { const res = await request('/api/library'); if (!res.ok) throw new ApiError(await errorMessage(res), res.status); return res.json(); },

@@ -4,6 +4,7 @@ import { api } from './api.js';
 import { retrieve } from './rag.js';
 import { uid, escapeHtml, showToast } from './ui.js';
 import { openModal } from '../components/modal.js';
+import { ico } from './icons.js';
 
 const MAX_PROJECT_CHARS = 400000;   // pro Projekt (der Speicher im Browser ist begrenzt)
 
@@ -50,7 +51,7 @@ export function openProjectDialog({ project, chats, onNewChat, onOpenChat, onCha
       <label class="proj-field">Name<input class="text-input" data-f="name" maxlength="60" value="${escapeHtml(project.name)}"></label>
       <label class="proj-field">Anweisungen für dieses Projekt<textarea class="text-input" data-f="ins" rows="5" maxlength="3000" placeholder="z. B. „Wir schreiben an einer Bewerbung. Antworte förmlich.“">${escapeHtml(project.instructions || '')}</textarea></label>
       <div class="proj-field">Dateien <small>(${project.files.length}) — große Dateien werden nach der Frage durchsucht</small>
-        <ul class="proj-files">${project.files.map(f => `<li><span>${escapeHtml(f.name)}</span><button type="button" class="mini-btn" data-del="${f.id}" aria-label="Datei entfernen">✕</button></li>`).join('') || '<li class="empty">Noch keine Dateien</li>'}</ul>
+        <ul class="proj-files">${project.files.map(f => `<li><span>${escapeHtml(f.name)}</span><button type="button" class="mini-btn" data-del="${f.id}" aria-label="Datei entfernen">${ico('xmark')}</button></li>`).join('') || '<li class="empty">Noch keine Dateien</li>'}</ul>
         <input type="file" data-f="file" multiple hidden>
         <button type="button" class="btn" data-add>Datei hinzufügen</button></div>
       <div class="proj-field">Chats in diesem Projekt

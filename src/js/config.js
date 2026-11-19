@@ -1,11 +1,22 @@
 // config.js — wo läuft der AI-Core-Server?
-// Die Seite kann auf GitHub Pages liegen; der Server steht im Heimnetz. Ändere nur diese Zeile,
-// wenn sich die Adresse des Servers ändert (oder trage sie im Anmeldefenster unter „ändern“ ein).
+// Nutzer sehen und ändern die Serveradresse nie: Die Anmeldung ist immer dieselbe. Die Adressen stehen fest hier (oder in
+// aicore.config.json neben index.html: { "servers": ["http://192.168.1.190:3000", "https://dein-server"] }).
+// Nur für dich als Betreiber: Seite einmal mit ?server=https://adresse öffnen, ?server=reset setzt zurück.
 
 export const DEFAULT_SERVER = 'https://obitlabs.tailc8dd2c.ts.net';   // Tailscale Funnel; im Heimnetz geht auch http://192.168.1.190:3000
 
 // Adressen, die beim Start automatisch ausprobiert werden (zuerst die schnelle im Heimnetz, dann die von unterwegs).
 export const SERVER_CANDIDATES = ['http://192.168.1.190:3000', DEFAULT_SERVER];
+
+/** Optionale Adressliste aus aicore.config.json (ersetzt die festen Adressen, wenn vorhanden). */
+export async function loadServerList() {
+  try {
+    const res = await fetch(new URL('./aicore.config.json', document.baseURI).href, { cache: 'no-store' });
+    if (!res.ok) return;
+    const list = ((await res.json()).servers || []).map(s => normalizeServer(s)).filter(Boolean);
+    if (list.length) SERVER_CANDIDATES.splice(0, SERVER_CANDIDATES.length, ...list);
+  } catch { /* keine Datei: feste Adressen */ }
+}
 let detected = '';
 
 const KEY = 'aicore_server';
@@ -16,7 +27,8 @@ export const isPrivateHost = (host = location.hostname) => PRIVATE_HOST.test(hos
 
 /** Kommt die Seite selbst vom AI-Core-Server (Heimnetz-Adresse oder Port 3000)? Dann gilt derselbe Ursprung. */
 // Nur GitHub Pages (und lokale Dateien) liegen außerhalb des Servers; jede andere Adresse, auch ein Tunnel, ist der Server selbst.
-const servedByServer = () => location.protocol !== 'file:' && !/\.github\.io$/i.test(location.hostname);
+// Vom AI-Core-Server selbst ausgeliefert (http/https, nicht GitHub). In der Desktop-App (aicore://) und bei file:// gilt das nicht.
+const servedByServer = () => /^https?:$/.test(location.protocol) && !/\.github\.io$/i.test(location.hostname);
 
 /** Basisadresse ohne „/“ am Ende; leer = gleicher Ursprung. */
 export function serverBase() {
@@ -51,3 +63,12 @@ export async function findServer(timeoutMs = 3500) {
 export function setServerBase(url) {
   try { url ? localStorage.setItem(KEY, url) : localStorage.removeItem(KEY); } catch { /* egal */ }
 }
+
+// Verstecktes Betreiber-Werkzeug: ?server=… einmal öffnen
+try {
+  const q = new URLSearchParams(location.search).get('server');
+  if (q) {
+    if (q === 'reset') localStorage.removeItem(KEY); else { const u = normalizeServer(q); if (u) localStorage.setItem(KEY, u); }
+    history.replaceState(null, '', location.pathname + location.hash);
+  }
+} catch { /* egal */ }

@@ -15,7 +15,7 @@ import { renderFilePreviewRow } from '../components/filePreview.js';
 import { initComposer } from '../components/composer.js';
 import { openSettingsModal } from './settings.js';
 import { mountLogin, mountConnect } from './login.js';
-import { isCrossOrigin, findServer } from './config.js';
+import { isCrossOrigin, findServer, loadServerList } from './config.js';
 import { STYLES, buildSystem } from './styles.js';
 import { createProjectStore, openProjectDialog } from './projects.js';
 import { bundleHtml } from './bundle.js';
@@ -33,6 +33,7 @@ import { openDataDialog } from './dataview.js';
 import { showWhatsNew, WHATS_NEW_VERSION } from './whatsnew.js';
 import { setupToolsMenu, setupChips, setupMoreMenu } from './layout.js';
 import { openTemplateDialog, insertTemplate } from './templates.js';
+import { ico, icoBrand } from './icons.js';
 
 // ---------- DOM ----------
 const $ = (id) => document.getElementById(id);
@@ -81,22 +82,22 @@ const panel = createArtifactPanel({
 
 const SUGGESTIONS = {
   default: [
-    { icon: '✍️', title: 'E-Mail entwerfen', sub: 'Formell, freundlich oder kurz', prompt: 'Schreibe eine freundliche E-Mail an ' },
-    { icon: '💡', title: 'Idee ausarbeiten', sub: 'Von der Notiz zum Plan', prompt: 'Hilf mir, diese Idee auszuarbeiten: ' },
-    { icon: '📄', title: 'Datei zusammenfassen', sub: 'PDF, Word oder Text anhängen', prompt: 'Fasse die angehängte Datei in fünf Stichpunkten zusammen.' },
-    { icon: '🧠', title: 'Etwas erklären', sub: 'Einfach und Schritt für Schritt', prompt: 'Erkläre mir einfach: ' },
+    { icon: 'pen-nib', title: 'E-Mail entwerfen', sub: 'Formell, freundlich oder kurz', prompt: 'Schreibe eine freundliche E-Mail an ' },
+    { icon: 'lightbulb', title: 'Idee ausarbeiten', sub: 'Von der Notiz zum Plan', prompt: 'Hilf mir, diese Idee auszuarbeiten: ' },
+    { icon: 'file-lines', title: 'Datei zusammenfassen', sub: 'PDF, Word oder Text anhängen', prompt: 'Fasse die angehängte Datei in fünf Stichpunkten zusammen.' },
+    { icon: 'brain', title: 'Etwas erklären', sub: 'Einfach und Schritt für Schritt', prompt: 'Erkläre mir einfach: ' },
   ],
   files: [
-    { icon: '📊', title: 'Excel-Tabelle', sub: 'Mit Summen und Formeln', prompt: 'Erstelle eine Excel-Tabelle für ' },
-    { icon: '📽️', title: 'Präsentation', sub: 'PowerPoint mit Titelfolie', prompt: 'Erstelle eine Präsentation mit 6 Folien über ' },
-    { icon: '📝', title: 'Word oder PDF', sub: 'Brief, Bericht, Anleitung', prompt: 'Schreibe als Word-Dokument: ' },
-    { icon: '🗂️', title: 'ZIP mit Dateien', sub: 'Mehrere Dateien in einem Paket', prompt: 'Erstelle ein ZIP mit den Dateien für ' },
+    { icon: 'file-excel', title: 'Excel-Tabelle', sub: 'Mit Summen und Formeln', prompt: 'Erstelle eine Excel-Tabelle für ' },
+    { icon: 'file-powerpoint', title: 'Präsentation', sub: 'PowerPoint mit Titelfolie', prompt: 'Erstelle eine Präsentation mit 6 Folien über ' },
+    { icon: 'file-word', title: 'Word oder PDF', sub: 'Brief, Bericht, Anleitung', prompt: 'Schreibe als Word-Dokument: ' },
+    { icon: 'file-zipper', title: 'ZIP mit Dateien', sub: 'Mehrere Dateien in einem Paket', prompt: 'Erstelle ein ZIP mit den Dateien für ' },
   ],
   coder: [
-    { icon: '🌐', title: 'Webseite bauen', sub: 'Eine Datei, sofort in der Vorschau', prompt: 'Baue eine moderne Landingpage für ' },
-    { icon: '🎮', title: 'Spiel entwickeln', sub: 'Läuft direkt im Browser', prompt: 'Programmiere ein kleines Browser-Spiel: ' },
-    { icon: '🐞', title: 'Fehler finden', sub: 'Code einfügen, Ursache erklären lassen', prompt: 'Finde den Fehler in diesem Code und erkläre ihn:\n\n' },
-    { icon: '🔍', title: 'Code erklären', sub: 'Zeile für Zeile verständlich', prompt: 'Erkläre mir diesen Code:\n\n' },
+    { icon: 'globe', title: 'Webseite bauen', sub: 'Eine Datei, sofort in der Vorschau', prompt: 'Baue eine moderne Landingpage für ' },
+    { icon: 'gamepad', title: 'Spiel entwickeln', sub: 'Läuft direkt im Browser', prompt: 'Programmiere ein kleines Browser-Spiel: ' },
+    { icon: 'bug', title: 'Fehler finden', sub: 'Code einfügen, Ursache erklären lassen', prompt: 'Finde den Fehler in diesem Code und erkläre ihn:\n\n' },
+    { icon: 'code', title: 'Code erklären', sub: 'Zeile für Zeile verständlich', prompt: 'Erkläre mir diesen Code:\n\n' },
   ],
 };
 
@@ -137,7 +138,7 @@ function renderProjects() {
     const item = document.createElement('div');
     item.className = 'chat-item';
     item.tabIndex = 0; item.setAttribute('role', 'button');
-    item.innerHTML = `<span class="chat-item-label" title="${p.name.replace(/"/g, '&quot;')}">📁 ${p.name.replace(/[<>&]/g, '')}</span>`;
+    item.innerHTML = `<span class="chat-item-label" title="${p.name.replace(/"/g, '&quot;')}">${ico('folder')} ${p.name.replace(/[<>&]/g, '')}</span>`;
     const open = () => openProject(p.id);
     item.addEventListener('click', open);
     item.addEventListener('keydown', (e) => { if (e.key === 'Enter') open(); });
@@ -192,7 +193,7 @@ function renderWelcome(roleId) {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'suggestion-card';
-    b.innerHTML = `<span class="sc-icon" aria-hidden="true">${s.icon}</span><span><span class="sc-title">${escapeHtml(s.title)}</span><span class="sc-sub">${escapeHtml(s.sub)}</span></span>`;
+    b.innerHTML = `<span class="sc-icon" aria-hidden="true">${ico(s.icon)}</span><span><span class="sc-title">${escapeHtml(s.title)}</span><span class="sc-sub">${escapeHtml(s.sub)}</span></span>`;
     b.addEventListener('click', () => composer.setValue(s.prompt));
     box.appendChild(b);
   }
@@ -204,19 +205,19 @@ const projects = createProjectStore();
 const setSelect = (id, value) => { const s = $(id); if (s) { s.value = value; s.dispatchEvent(new Event('change', { bubbles: true })); } };
 function renderQuickTiles() {
   const tiles = [
-    ['🔎', 'Recherchieren', 'Websuche mit Quellen', () => { setSelect('search-select', 'web'); composer.setValue('Recherchiere: '); }],
-    ['✍️', 'Schreiben', 'Vorlagen für E-Mail, Text, Bewerbung', () => openTemplates()],
-    ['💻', 'Programmieren', 'Rolle Coder mit Vorschau', () => { setSelect('role-select', 'coder'); composer.setValue('Baue '); }],
-    ['📊', 'Daten analysieren', 'CSV anhängen, Spalten und Diagramme', () => { showToast('Hänge eine CSV-Datei an und frage dann, was du wissen willst.'); $('attach-btn').click(); }],
-    ['🎙️', 'Sprechen', 'Sprachmodus, freihändig', () => startVoice()],
-    ['🖼️', 'Bild erzeugen', 'Beschreibe, was du sehen willst', () => composer.setValue('/bild ')],
+    ['magnifying-glass', 'Recherchieren', 'Websuche mit Quellen', () => { setSelect('search-select', 'web'); composer.setValue('Recherchiere: '); }],
+    ['pen-nib', 'Schreiben', 'Vorlagen für E-Mail, Text, Bewerbung', () => openTemplates()],
+    ['laptop-code', 'Programmieren', 'Rolle Coder mit Vorschau', () => { setSelect('role-select', 'coder'); composer.setValue('Baue '); }],
+    ['chart-column', 'Daten analysieren', 'CSV anhängen, Spalten und Diagramme', () => { showToast('Hänge eine CSV-Datei an und frage dann, was du wissen willst.'); $('attach-btn').click(); }],
+    ['microphone', 'Sprechen', 'Sprachmodus, freihändig', () => startVoice()],
+    ['image', 'Bild erzeugen', 'Beschreibe, was du sehen willst', () => composer.setValue('/bild ')],
   ];
   const box = $('quick-tiles');
   box.innerHTML = '';
   for (const [icon, title, sub, run] of tiles) {
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'quick-tile';
-    b.innerHTML = `<span class="qt-icon" aria-hidden="true">${icon}</span><b>${title}</b><small>${sub}</small>`;
+    b.innerHTML = `<span class="qt-icon" aria-hidden="true">${ico(icon)}</span><b>${title}</b><small>${sub}</small>`;
     b.addEventListener('click', () => { run(); composerInput.focus(); });
     box.appendChild(b);
   }
@@ -227,13 +228,13 @@ function renderQuickTiles() {
   resume.innerHTML = (chats.length || projs.length ? '<div class="resume-title">Weitermachen</div>' : '');
   for (const c of chats) {
     const b = document.createElement('button');
-    b.type = 'button'; b.className = 'resume-item'; b.innerHTML = `<span>💬</span><span>${escapeHtml(c.title)}</span>`;
+    b.type = 'button'; b.className = 'resume-item'; b.innerHTML = `<span>${ico('comment')}</span><span>${escapeHtml(c.title)}</span>`;
     b.addEventListener('click', () => selectChat(c.id));
     resume.appendChild(b);
   }
   for (const p of projs) {
     const b = document.createElement('button');
-    b.type = 'button'; b.className = 'resume-item'; b.innerHTML = `<span>📁</span><span>${escapeHtml(p.name)}</span>`;
+    b.type = 'button'; b.className = 'resume-item'; b.innerHTML = `<span>${ico('folder')}</span><span>${escapeHtml(p.name)}</span>`;
     b.addEventListener('click', () => openProject(p.id));
     resume.appendChild(b);
   }
@@ -282,7 +283,7 @@ function renderMessages({ keepScroll = false } = {}) {
   }
   welcomeScreen.hidden = true;
   messageList.hidden = false;
-  titleEl.textContent = (projects.get(chat.projectId) ? '📁 ' : '') + chat.title;
+  titleEl.textContent = chat.title; titleEl.dataset.project = projects.get(chat.projectId) ? '1' : '';
   const handlers = messageHandlers(chat);
   if (chat.summary?.text) {
     const note = document.createElement('div');
@@ -341,6 +342,7 @@ function updateContextMeter() {
   const limit = contextLimit();
   const pct = Math.min(1, used / limit);
   const meter = $('ctx-meter');
+  meter.hidden = used === 0;                              // leerer Chat: keine Anzeige, das Kopfband bleibt ruhig
   meter.querySelector('.ring').style.strokeDashoffset = String(75.4 * (1 - pct));
   $('ctx-pct').textContent = String(Math.round(pct * 100));
   meter.classList.toggle('warn', pct >= 0.75 && pct < 0.95);
@@ -393,6 +395,13 @@ function closeDrawer() { appEl.classList.remove('drawer-open'); }
 // Cloud-Hinweis: Nachrichten verlassen den Tiny — einmal pro Quelle bestätigen.
 function ensureCloudAck(id) {
   const src = sourceOf(id);
+  const meta = (health?.models || []).find(m => m.id === id);
+  if (meta?.cloud) {                                       // Modell mit Anzeigenamen, das in der Cloud läuft
+    if (settings.cloudAck?.core) return true;
+    const ok = window.confirm('Dieses Modell läuft in der Cloud: Deine Nachrichten werden dafür an einen externen Dienst gesendet. Die kostenlosen Modelle bleiben auf dem Server.\n\nFortfahren?');
+    if (ok) { settings.cloudAck = { ...settings.cloudAck, core: true }; storage.saveSettings(settings); }
+    return Boolean(ok);
+  }
   if (src !== 'cloud' && src !== 'anthropic') return true;
   if (settings.cloudAck?.[src]) return true;
   const label = src === 'cloud' ? (health?.status?.cloud?.label || 'dem Cloud-Anbieter') : 'Anthropic';
@@ -626,6 +635,7 @@ function handleCodeAction(type, block, btn, message) {
   else if (type === 'preview') panel.open(withBundle(block, message));
   else if (type === 'open') panel.open({ code, lang, file, mode: 'code' });
   else if (type === 'run') runCodeBlock(code, btn);
+  else if (type === 'linux') import('./lab.js').then(m => m.runSnippet({ code, lang, file }));
 }
 
 async function runCodeBlock(code, btn) {
@@ -799,6 +809,7 @@ function openCommandPalette() {
     { label: 'Papierkorb', hint: 'Einstellungen', run: () => openSettings('trash') },
     { label: 'Abgleich zwischen Geräten', hint: 'Einstellungen', run: () => openSettings('sync') },
     { label: 'Was ist neu in 5.0', hint: '/neu', run: showWhatsNew },
+    { label: 'Linux-Testlabor (Coder Ultimate)', hint: '/linux', run: () => import('./lab.js').then(m => m.openLab()) },
     { label: 'Bibliothek (Dokumente)', hint: '/bibliothek', run: () => openSettings('library') },
     { label: 'Chat als Word speichern', hint: '/wordchat', run: exportChatWord },
     ...(appConfig.owner ? [{ label: 'Modelle verwalten', hint: 'Einstellungen', run: () => openSettings('serverModels') }] : []),
@@ -1109,6 +1120,7 @@ function importShared(data) {
 $('share-btn').addEventListener('click', shareCurrent);
 
 const COMMANDS = [
+  { name: 'linux', hint: 'Linux-Testlabor öffnen (Pro)', run: () => import('./lab.js').then(m => m.openLab()) },
   { name: 'neu', hint: 'Was ist neu in AI Core 5.0', run: showWhatsNew },
   { name: 'bibliothek', hint: 'Deine Dokumente verwalten', run: () => openSettings('library') },
   { name: 'wordchat', hint: 'Ganzen Chat als Word-Datei speichern', run: exportChatWord },
@@ -1167,7 +1179,7 @@ async function refreshHealth() {
 
 function syncModelSelect() {
   const models = health?.models || [];
-  const sig = `${health ? 'h' : 'x'}:${models.map(m => `${m.id}${m.loaded ? '*' : ''}`).join('|')}`;
+  const sig = `${health ? 'h' : 'x'}:${models.map(m => `${m.id}${m.loaded ? '*' : ''}${m.locked ? '!' : ''}`).join('|')}`;
   if (modelSelect.dataset.sig !== sig) {
     modelSelect.dataset.sig = sig;
     modelSelect.innerHTML = '';
@@ -1182,13 +1194,15 @@ function syncModelSelect() {
         for (const m of list) {
           const o = document.createElement('option');
           o.value = m.id;
-          o.textContent = `${m.loaded ? '● ' : ''}${m.label}`;
+          o.textContent = `${m.loaded ? '● ' : ''}${m.label}${m.locked ? '  (Pro)' : ''}`;
+          if (m.locked) o.dataset.locked = '1';
           og.appendChild(o);
         }
         modelSelect.appendChild(og);
       }
       const saved = settings.model;
-      const pick = models.find(m => m.id === saved) || models.find(m => m.id === `ollama/${saved}`) || models.find(m => m.id === health.model) || models[0];
+      const open = models.filter(m => !m.locked);
+      const pick = open.find(m => m.id === saved) || open.find(m => m.id === `ollama/${saved}`) || open.find(m => m.id === health.model) || open[0] || models[0];
       modelSelect.value = pick.id;
       if (settings.model !== pick.id) { settings.model = pick.id; storage.saveSettings(settings); }
     }
@@ -1313,10 +1327,16 @@ $('theme-toggle').addEventListener('click', () => {
 let previousModel = '';
 modelSelect.addEventListener('focus', () => { previousModel = modelSelect.value; });
 modelSelect.addEventListener('change', () => {
-  if (!ensureCloudAck(modelSelect.value)) { modelSelect.value = previousModel; return; }
+  if (modelSelect.selectedOptions[0]?.dataset.locked) {
+    modelSelect.value = settings.model || previousModel;
+    showToast('Dieses Modell gehört zu AI Core Pro.');
+    openSettings('pro');
+    return;
+  }
+  if (!ensureCloudAck(modelSelect.value)) { modelSelect.value = settings.model || previousModel; return; }
   settings.model = modelSelect.value;
   storage.saveSettings(settings);
-  if (sourceOf(modelSelect.value) === 'ollama') api.warmup(modelSelect.value);
+  if (['ollama', 'core'].includes(sourceOf(modelSelect.value))) api.warmup(modelSelect.value);
   updateStatus();
   updateContextMeter();
 });
@@ -1409,6 +1429,7 @@ function applyConfig(cfg) {
 }
 window.addEventListener('aicore:reconnected', (e) => applyConfig(e.detail));
 window.addEventListener('aicore:tokens', (e) => setTokens(e.detail));
+window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); window.__pwaPrompt = e; });
 window.addEventListener('aicore:unauthorized', () => setTokens(null));
 
 // Rückkehr vom Bezahlen (Stripe): #pro=success&session_id=… wird nach der Anmeldung bestätigt
@@ -1429,6 +1450,7 @@ function confirmProReturn() {
     history.replaceState(null, '', location.pathname + location.search);
   }
   try {
+    await loadServerList();
     await findServer();
     applyConfig(await api.config());
   } catch (e) {
@@ -1436,7 +1458,7 @@ function confirmProReturn() {
     syncModelSelect();
     updateStatus();
     // Seite liegt außerhalb (GitHub): klare Meldung mit Adressfeld statt stillem Demo-Modus.
-    if (e?.network) mountConnect({ error: e?.message || 'Der Server ist nicht erreichbar.', onConnected: applyConfig });
+    if (e?.network) mountConnect({ onConnected: applyConfig });
   }
   setInterval(() => { if (!document.hidden && appConfig.authenticated) refreshHealth(); }, 30000);
 })();

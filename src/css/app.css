@@ -818,3 +818,49 @@ body::before { background:
 .tok-table div:last-child { border-bottom: 0; }
 .tok-table small { color: var(--text-3); text-align: right; }
 @media (max-width: 560px) { .tok-plans { grid-template-columns: 1fr; } }
+
+/* ---------- Linux-Testlabor ---------- */
+.lab { display: grid; gap: 10px; min-height: 420px; }
+.lab-status { padding: 8px 12px; border-radius: 10px; font-size: 13px; background: var(--bg-2); color: var(--text-2); }
+.lab-status.ok { background: color-mix(in srgb, var(--success) 14%, transparent); color: var(--text); }
+.lab-status.warn { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--text); }
+.lab-out { margin: 0; height: 320px; overflow: auto; padding: 14px; border-radius: 14px; background: #07080e; color: #d7dbea; font: 13px/1.55 var(--mono); white-space: pre-wrap; word-break: break-word; border: 1px solid var(--line-strong); }
+.lab-out .lab-cmd { color: #8b7cff; font-weight: 600; } .lab-out .lab-ok { color: #4fd69c; } .lab-out .lab-err { color: #ff7a8c; } .lab-out .lab-dim { color: #7d8199; }
+.lab-in { display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 14px; border-radius: 14px; border: 1px solid var(--line-strong); background: var(--bg-1); }
+.lab-in span { color: var(--accent); font: 600 14px var(--mono); }
+.lab-in input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font: 14px var(--mono); }
+.lab-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; } .lab-tools small { color: var(--text-3); margin-left: auto; }
+
+/* ---------- Symbole (Font Awesome) ---------- */
+i.fa-solid, i.fa-regular, i.fa-brands { font-style: normal; line-height: 1; }
+.sc-icon i, .qt-icon i { font-size: 18px; color: var(--accent); }
+.qt-icon { color: var(--accent); }
+.wn-icon i { font-size: 18px; color: var(--accent); }
+.token-pill i, .code-actions i, .chat-actions i { font-size: .9em; }
+.chat-item .fav-btn i.fa-solid.fa-star { color: #f5b942; }
+.file-chip i { color: var(--text-3); }
+.chat-title[data-project="1"]::before, #chat-title[data-project="1"]::before { content: "\f07b"; font-family: "Font Awesome 6 Free"; font-weight: 900; margin-right: 8px; font-size: .8em; opacity: .55; }
+
+/* ---------- Download-Knopf: |____________↓| ---------- */
+.dl-list { display: grid; gap: 10px; margin: 6px 0 14px; }
+.dl-btn { position: relative; display: flex; align-items: center; gap: 12px; width: 100%; min-height: 54px; padding: 0 0 0 14px; border: 1px solid var(--line-strong); border-radius: 14px; background: var(--bg-1); color: var(--text); text-decoration: none; font: inherit; text-align: left; cursor: pointer; overflow: hidden; transition: border-color .2s, box-shadow .2s, transform .2s; }
+.dl-btn::before { content: ""; position: absolute; inset: 0; background: var(--grad); opacity: 0; transform: translateX(-101%); transition: transform .35s ease, opacity .35s ease; }
+.dl-btn > * { position: relative; }
+.dl-ico { width: 22px; text-align: center; font-size: 18px; color: var(--text-2); }
+.dl-name { display: grid; line-height: 1.25; font-weight: 600; font-size: 14px; }
+.dl-name small { font-weight: 500; color: var(--text-3); font-size: 12px; }
+.dl-line { flex: 1; align-self: flex-end; height: 1px; margin-bottom: 17px; background: linear-gradient(90deg, var(--line-strong), var(--line-strong) 60%, transparent); }
+.dl-arrow { align-self: stretch; display: grid; place-items: center; width: 56px; border-left: 1px solid var(--line-strong); font-size: 16px; color: var(--accent); transition: color .2s, border-color .2s; }
+.dl-btn:hover { border-color: var(--accent); box-shadow: 0 10px 28px var(--glow); transform: translateY(-1px); }
+.dl-btn:hover::before { opacity: .16; transform: translateX(0); }
+.dl-btn:hover .dl-arrow i { animation: dl-bounce .7s ease-in-out infinite; }
+.dl-btn[aria-disabled="true"] { opacity: .5; pointer-events: none; }
+@keyframes dl-bounce { 0%, 100% { transform: translateY(-2px); } 50% { transform: translateY(3px); } }
+
+.lab-out img.lab-shot { display: block; max-width: 100%; margin: 8px 0; border-radius: 10px; border: 1px solid var(--line-strong); }
+
+/* ---------- Aufgeräumtes Layout ---------- */
+.welcome-screen { padding-bottom: 150px; }
+#suggestion-cards { display: none; }                  /* Vorschläge stehen schon in den Kacheln */
+.ctx-meter[hidden] { display: none; }
+.topbar-right, .topbar .actions { gap: 8px; }

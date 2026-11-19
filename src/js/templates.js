@@ -1,6 +1,7 @@
 // templates.js — Vorlagen für häufige Aufgaben. Platzhalter stehen in [eckigen Klammern]; eigene Vorlagen lassen sich speichern.
 import { openModal } from '../components/modal.js';
 import { escapeHtml, uid, showToast } from './ui.js';
+import { ico } from './icons.js';
 
 export const BUILTIN = [
   { name: 'E-Mail schreiben', text: 'Schreibe eine [förmliche/freundliche] E-Mail an [Empfänger]. Anlass: [worum es geht]. Wichtig: [Kernpunkte]. Halte sie kurz.' },
@@ -33,7 +34,7 @@ export function openTemplateDialog({ settings, saveSettings, currentText, onUse 
   const draw = () => {
     const own = settings.templates || [];
     const match = (t) => !query || `${t.name} ${t.text}`.toLowerCase().includes(query);
-    const card = (t, mine) => `<div class="tpl-card" data-id="${t.id || ''}" data-text="${escapeHtml(t.text)}"><button type="button" class="tpl-use"><b>${escapeHtml(t.name)}</b><span>${escapeHtml(t.text.slice(0, 110))}${t.text.length > 110 ? ' …' : ''}</span></button>${mine ? '<button type="button" class="mini-btn" data-del aria-label="Vorlage löschen">✕</button>' : ''}</div>`;
+    const card = (t, mine) => `<div class="tpl-card" data-id="${t.id || ''}" data-text="${escapeHtml(t.text)}"><button type="button" class="tpl-use"><b>${escapeHtml(t.name)}</b><span>${escapeHtml(t.text.slice(0, 110))}${t.text.length > 110 ? ' …' : ''}</span></button>${mine ? `<button type="button" class="mini-btn" data-del aria-label="Vorlage löschen">${ico('xmark')}</button>` : ''}</div>`;
     root.innerHTML = `<input class="text-input" data-q placeholder="Vorlagen suchen" value="${escapeHtml(query)}">
       ${own.filter(match).length ? `<div class="group-title">Meine Vorlagen</div>${own.filter(match).map(t => card(t, true)).join('')}` : ''}
       <div class="group-title">Vorlagen</div>${BUILTIN.filter(match).map(t => card(t, false)).join('') || '<div class="note">Nichts gefunden</div>'}

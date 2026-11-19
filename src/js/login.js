@@ -5,7 +5,7 @@
 // Das Firebase-SDK wird erst geladen, wenn der Login wirklich angezeigt wird.
 
 import { api } from './api.js';
-import { findServer, serverBase, isCrossOrigin, isPrivateHost, normalizeServer, setServerBase, DEFAULT_SERVER } from './config.js';
+import { findServer, serverBase, isCrossOrigin, isPrivateHost } from './config.js';
 
 const SDK_BASE = 'https://www.gstatic.com/firebasejs/10.14.1';
 
@@ -171,7 +171,6 @@ export function mountLogin({ methods, onSuccess, legal = {} }) {
   const { el, $, say, busy } = shell(`
     <h2 id="lg-title">Willkommen bei AI Core</h2>
     <p class="lg-sub">Melde dich an, um weiterzumachen.</p>
-    ${isCrossOrigin() ? `<button type="button" class="lg-server" data-action="server" title="Server-Adresse ändern"><i class="lg-dot"></i><span>Verbunden mit ${esc(hostLabel())}</span><u>ändern</u></button>` : ''}
     <div class="lg-msg" role="alert" hidden></div>
 
     <section data-pane="firebase" ${fb ? '' : 'hidden'}>
@@ -300,66 +299,35 @@ export function mountLogin({ methods, onSuccess, legal = {} }) {
     (toPassword ? pwForm.elements.secret : emailForm?.elements.email)?.focus();
   });
 
-  // --- Server wechseln ---
-  $('[data-action="server"]')?.addEventListener('click', () => {
-    el.remove();
-    mountConnect({ onConnected: (cfg) => window.dispatchEvent(new CustomEvent('aicore:reconnected', { detail: cfg })) });
-  });
-
   document.body.appendChild(el);
   setTimeout(() => el.querySelector('input:not([hidden])')?.focus(), 30);
   return el;
 }
 
 /**
- * Verbindungsfenster: erscheint, wenn der Server nicht erreichbar ist (oder man ihn wechseln will).
+ * Erscheint nur, wenn der Server nicht antwortet. Keine Adresse, kein Eingabefeld: nur „Erneut versuchen“.
  * onConnected(config) wird aufgerufen, sobald der Server antwortet.
  */
-export function mountConnect({ error = '', onConnected }) {
+export function mountConnect({ onConnected }) {
   const { el, $, say, busy } = shell(`
-    <h2 id="lg-title">${error ? 'Server nicht erreichbar' : 'Server wählen'}</h2>
-    <p class="lg-sub">Die Oberfläche läuft hier, die KI auf deinem Server.</p>
+    <h2 id="lg-title">AI Core ist gerade nicht erreichbar</h2>
+    <p class="lg-sub">Das passiert meistens kurz. Prüfe deine Internetverbindung und versuche es noch einmal.</p>
     <div class="lg-msg" role="alert" hidden></div>
-    <form class="lg-form" novalidate>
-      <label>Server-Adresse<input class="text-input" name="server" inputmode="url" autocapitalize="off" spellcheck="false" value="${esc(serverBase() || DEFAULT_SERVER)}" placeholder="http://192.168.1.190:3000 oder https://…"></label>
-      <button class="btn primary block" type="submit"><b>Verbinden</b></button>
-      <button type="button" class="link-btn" data-action="default">Automatisch suchen</button>
-    </form>
-    <details class="lg-help"><summary>Verbindung klappt nicht?</summary><ul>
-      <li>Läuft der Server? Auf dem Tiny: <code>sudo systemctl status ai-core</code></li>
-      <li>Du musst im selben WLAN/Netzwerk sein wie der Server.</li>
-      <li>Chrome und Edge fragen einmal nach dem Zugriff aufs lokale Netzwerk. Bitte <b>Zulassen</b>.</li>
-      <li>Von unterwegs oder mit dem iPhone: hier die HTTPS-Adresse des Servers eintragen (zum Beispiel von Tailscale Funnel, siehe README).</li>
-    </ul></details>`);
-  const form = $('form');
-  if (error) say(error);
-
-  const connect = async (raw) => {
-    const url = normalizeServer(raw);
-    if (url === null) return say('Das ist keine gültige Adresse.');
-    const previous = serverBase();
-    setServerBase(url === DEFAULT_SERVER ? '' : url);
-    say(''); busy(form.querySelector('.primary'), true);
+    <button class="btn primary block" type="button" id="lg-retry"><b>Erneut versuchen</b></button>`);
+  const btn = $('#lg-retry');
+  btn.addEventListener('click', async () => {
+    say(''); busy(btn, true);
     try {
+      await findServer(5000);
       const cfg = await api.config();
       el.remove();
       onConnected(cfg);
-    } catch (e) {
-      setServerBase(previous);
-      busy(form.querySelector('.primary'), false);
-      say(e?.network ? `Keine Antwort von ${url.replace(/^https?:\/\//, '')}. Details unter „Verbindung klappt nicht?“.` : explain(e));
+    } catch {
+      busy(btn, false);
+      say('Immer noch keine Verbindung. Bitte gleich noch einmal versuchen.');
     }
-  };
-  form.addEventListener('submit', (e) => { e.preventDefault(); connect(form.elements.server.value); });
-  $('[data-action="default"]').addEventListener('click', async () => {
-    setServerBase(''); say(''); busy(form.querySelector('.primary'), true);
-    const found = await findServer(5000);
-    busy(form.querySelector('.primary'), false);
-    if (!found) return say('Kein Server gefunden. Prüfe, ob er läuft und du im richtigen Netzwerk bist.');
-    form.elements.server.value = found; connect(found);
   });
-
   document.body.appendChild(el);
-  setTimeout(() => form.elements.server.focus(), 30);
+  setTimeout(() => btn.focus(), 30);
   return el;
 }

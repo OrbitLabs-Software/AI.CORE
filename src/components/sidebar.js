@@ -1,4 +1,5 @@
 import { escapeHtml, dateGroup } from '../js/ui.js';
+import { ico } from '../js/icons.js';
 
 function chatItem(chat, { activeId, onSelect, onDelete, onToggleFavorite }) {
   const el = document.createElement('div');
@@ -8,8 +9,8 @@ function chatItem(chat, { activeId, onSelect, onDelete, onToggleFavorite }) {
   el.setAttribute('role', 'button');
   el.innerHTML = `
     <span class="chat-item-label" title="${escapeHtml(chat.title)}">${escapeHtml(chat.title)}</span>
-    <button class="mini-btn" data-act="fav" title="${chat.favorite ? 'Nicht mehr anpinnen' : 'Anpinnen'}" aria-label="Anpinnen">${chat.favorite ? '★' : '☆'}</button>
-    <button class="mini-btn" data-act="del" title="Chat löschen" aria-label="Chat löschen">✕</button>`;
+    <button class="mini-btn" data-act="fav" title="${chat.favorite ? 'Nicht mehr anpinnen' : 'Anpinnen'}" aria-label="Anpinnen">${chat.favorite ? ico('star') : ico('star', { style: 'regular' })}</button>
+    <button class="mini-btn" data-act="del" title="Chat löschen" aria-label="Chat löschen">${ico('xmark')}</button>`;
   el.addEventListener('click', (e) => {
     const act = e.target.closest('[data-act]')?.dataset.act;
     if (act === 'fav') { e.stopPropagation(); onToggleFavorite(chat.id); }

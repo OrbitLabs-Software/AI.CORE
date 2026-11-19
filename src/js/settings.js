@@ -5,6 +5,7 @@ import { serverBase } from './config.js';
 import { api, ApiError } from './api.js';
 import { allRoles, BUILTIN_ROLES } from './roles.js';
 import { exportAllJSON, exportBackupJSON, parseImport, parseBackup } from './exporter.js';
+import { ico, icoBrand } from './icons.js';
 
 const el = (tag, props = {}, html = '') => {
   const n = document.createElement(tag);
@@ -19,7 +20,7 @@ export function openSettingsModal({ store, sync = null, initialTab, authRequired
   const settings = storage.getSettings();
   const save = () => { storage.saveSettings(settings); onSettingsChange?.(); };
 
-  const GROUPS = { general: 'Persönlich', memory: 'Persönlich', library: 'Persönlich', roles: 'Persönlich', models: 'KI', serverModels: 'Übersicht', pro: 'Konto und Daten', sync: 'Konto und Daten', data: 'Konto und Daten', trash: 'Konto und Daten', stats: 'Übersicht', server: 'Übersicht', about: 'Übersicht' };
+  const GROUPS = { general: 'Persönlich', memory: 'Persönlich', library: 'Persönlich', apps: 'Konto und Daten', roles: 'Persönlich', models: 'KI', serverModels: 'Übersicht', pro: 'Konto und Daten', sync: 'Konto und Daten', data: 'Konto und Daten', trash: 'Konto und Daten', stats: 'Übersicht', server: 'Übersicht', about: 'Übersicht' };
   const defs = {
     general: { label: 'Allgemein', render: renderGeneral },
     memory: { label: 'Erinnerungen', render: renderMemory },
@@ -27,6 +28,7 @@ export function openSettingsModal({ store, sync = null, initialTab, authRequired
     roles: { label: 'Rollen', render: renderRoles },
     models: { label: 'Modelle', render: renderModels },
     pro: { label: 'Pro', render: renderPro },
+    apps: { label: 'Apps', render: renderApps },
     sync: { label: 'Abgleich', render: renderSync },
     data: { label: 'Daten', render: renderData },
     trash: { label: 'Papierkorb', render: renderTrash },
@@ -39,6 +41,50 @@ export function openSettingsModal({ store, sync = null, initialTab, authRequired
     initialTab,
     tabs: Object.fromEntries(Object.entries(defs).map(([k, v]) => [k, { ...v, group: GROUPS[k] }])),
   });
+
+  // ---------- Apps: Downloads für alle Geräte ----------
+  function renderApps() {
+    const wrap = el('div');
+    wrap.innerHTML = '<div class="note">Lade …</div>';
+    const dlUrl = (base, file) => (/\/releases(\/latest)?\/?$/.test(base) ? `${base.replace(/\/releases(\/latest)?\/?$/, '')}/releases/latest/download/${file}` : base);
+    const btn = (base, { brand, name, sub, file }) => `<a class="dl-btn" ${base ? `href="${escapeHtml(dlUrl(base, file))}" download` : 'aria-disabled="true"'} rel="noopener noreferrer"><span class="dl-ico">${ico(brand, { style: 'brands' })}</span><span class="dl-name">${name}<small>${sub}</small></span><span class="dl-line"></span><span class="dl-arrow">${ico('arrow-down')}</span></a>`;
+    const draw = (p) => {
+      const base = p.coder?.releases || '';
+      wrap.innerHTML = `
+        <div class="group-title">AI Core als Programm</div>
+        <div class="dl-list">
+          ${btn(base, { brand: 'windows', name: 'Windows', sub: 'Installer .exe', file: 'AI-Core-Setup.exe' })}
+          ${btn(base, { brand: 'apple', name: 'macOS · Apple Silicon', sub: '.dmg', file: 'AI-Core-macOS-arm64.dmg' })}
+          ${btn(base, { brand: 'apple', name: 'macOS · Intel', sub: '.dmg', file: 'AI-Core-macOS-x64.dmg' })}
+          ${btn(base, { brand: 'linux', name: 'Linux', sub: '.AppImage', file: 'AI-Core-Linux.AppImage' })}
+        </div>
+        <div class="group-title">Auf dem Handy und Tablet</div>
+        <div class="dl-list">
+          <button type="button" class="dl-btn" id="pwa-install"><span class="dl-ico">${ico('mobile-screen')}</span><span class="dl-name">iPhone, iPad und Android<small>als App installieren</small></span><span class="dl-line"></span><span class="dl-arrow">${ico('arrow-down')}</span></button>
+        </div>
+        <div class="settings-row-sub" id="pwa-hint"></div>
+        <div class="group-title">Coder Ultimate für die Konsole <span class="badge">Pro</span></div>
+        <div class="dl-list">
+          ${btn(base, { brand: 'windows', name: 'Windows', sub: 'aicore-coder-win.exe', file: 'aicore-coder-win.exe' })}
+          ${btn(base, { brand: 'apple', name: 'macOS · Apple Silicon', sub: 'aicore-coder-macos-arm64', file: 'aicore-coder-macos-arm64' })}
+          ${btn(base, { brand: 'apple', name: 'macOS · Intel', sub: 'aicore-coder-macos-x64', file: 'aicore-coder-macos-x64' })}
+          ${btn(base, { brand: 'linux', name: 'Linux', sub: 'aicore-coder-linux', file: 'aicore-coder-linux' })}
+        </div>
+        ${base ? '' : '<div class="note warn">Die Downloads sind noch nicht freigeschaltet (<code>RELEASES_URL</code> in der .env).</div>'}
+        <div class="settings-row-sub">Die Programme sind nicht signiert: Windows zeigt eine Warnung („Trotzdem ausführen“), macOS verlangt Rechtsklick → Öffnen.</div>`;
+      const hint = wrap.querySelector('#pwa-hint');
+      wrap.querySelector('#pwa-install').addEventListener('click', async () => {
+        const ev = window.__pwaPrompt;
+        if (ev) { ev.prompt(); await ev.userChoice.catch(() => {}); window.__pwaPrompt = null; return; }
+        const ios = /iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        hint.textContent = ios
+          ? 'iPhone und iPad: In Safari auf „Teilen“ tippen und dann „Zum Home-Bildschirm“ wählen.'
+          : 'Android: Im Browser-Menü (drei Punkte) „App installieren“ oder „Zum Startbildschirm hinzufügen“ wählen. Am Computer zeigt Chrome und Edge ein Installieren-Symbol in der Adressleiste.';
+      });
+    };
+    api.plan().then(draw).catch(() => draw({}));
+    return wrap;
+  }
 
   // ---------- Bibliothek ----------
   function renderLibrary() {
@@ -551,13 +597,17 @@ export function openSettingsModal({ store, sync = null, initialTab, authRequired
         </div>
         ${p.unlimited || t.enabled === false ? '' : `
         <div class="tok-plans">
-          <div class="tok-plan${p.pro ? '' : ' on'}"><b>Gratis</b><span class="tok-price">0 €</span><ul><li>${nf(t.free.max)} Token zum Start</li><li>Zurückgesetzt alle ${nf(t.free.resetHours)} Stunden</li><li>Alle Funktionen</li></ul></div>
-          <div class="tok-plan pro${p.pro ? ' on' : ''}"><b>Pro</b><span class="tok-price">${escapeHtml(p.billing.price || '16,99 € / Monat')}</span><ul><li>${nf(t.pro.max)} Token</li><li>Zurückgesetzt alle ${nf(t.pro.resetHours)} Stunden</li><li>Jederzeit kündbar</li></ul><div class="pro-actions"></div></div>
+          <div class="tok-plan${p.pro ? '' : ' on'}"><b>Gratis</b><span class="tok-price">0 €</span><ul><li>${nf(t.free.max)} Token, alle ${nf(t.free.resetHours)} Stunden neu</li><li>Schnelles Modell „AI Core Lite“</li><li>Alle Funktionen, App für alle Geräte</li></ul></div>
+          <div class="tok-plan pro${p.pro ? ' on' : ''}"><b>Pro</b><span class="tok-price">${escapeHtml(p.billing.price || '16,99 € / Monat')}</span><ul><li>${nf(t.pro.max)} Token, alle ${nf(t.pro.resetHours)} Stunden neu</li><li><b>Mehr und stärkere Modelle</b></li><li><b>Coder Ultimate</b> mit Linux-Testlabor</li><li>Jederzeit kündbar</li></ul><div class="pro-actions"></div></div>
         </div>
         <div class="group-title">Was kostet was</div>
         <div class="tok-table">${rows.map(([n, v, u]) => `<div><span>${n}</span><b>${nf(v)} Token</b><small>pro ${u}</small></div>`).join('')}</div>
         <div class="settings-row-sub">Mit deinem Guthaben (${nf(t.max)}) sind das zum Beispiel ${buys(t.max)}. Dein Satz und die Antwort zählen beide mit; Musik kommt mit einer späteren Version.</div>`}
         ${p.unlimited ? '<div class="pro-actions"></div>' : ''}
+        <div class="group-title">Coder Ultimate</div>
+        <div class="note">Der Programmier-Agent für deine <b>Konsole</b> (Windows, macOS, Linux): Er liest und schreibt Dateien in deinem Projektordner, führt Befehle mit deiner Erlaubnis aus und <b>testet Programme in einem eigenen Linux-Testlabor</b> auf deinem Server. ${p.unlimited || p.pro ? '' : 'Gehört zu AI Core Pro.'}</div>
+        <div class="pro-actions" id="coder-actions"></div>
+        <div class="settings-row-sub" id="coder-hint"></div>
         ${p.billing.codes ? `<div class="group-title">Code einlösen</div><div class="pro-code"><input class="text-input" id="pro-code" placeholder="Code eingeben" autocomplete="off" spellcheck="false"><button class="btn" id="pro-redeem">Einlösen</button></div>` : ''}
         ${legalLinks(legal) ? `<div class="settings-row-sub">Mit dem Kauf gelten unsere Bedingungen: ${[['terms', 'AGB'], ['privacy', 'Datenschutz'], ['imprint', 'Impressum']].filter(([k]) => legal[k]).map(([k, t2]) => `<a href="${escapeHtml(legal[k])}" target="_blank" rel="noopener noreferrer">${t2}</a>`).join(' · ')}</div>` : ''}
         ${!p.billing.stripe && !p.billing.codes && !p.unlimited ? '<div class="note warn">Der Server hat noch keine Bezahlung eingerichtet (STRIPE_* in der .env, siehe README).</div>' : ''}`;
@@ -571,6 +621,18 @@ export function openSettingsModal({ store, sync = null, initialTab, authRequired
         const b = el('button', { className: 'btn' }, 'Abo verwalten oder kündigen');
         b.addEventListener('click', async () => { try { location.href = await api.proPortal(returnUrl()); } catch (e) { fail(e); } });
         actions.appendChild(b);
+      }
+      const ca = wrap.querySelector('#coder-actions'), hint = wrap.querySelector('#coder-hint');
+      if (ca) {
+        const lab = el('button', { className: 'btn' }, `${icoBrand('linux')} Linux-Testlabor öffnen`);
+        lab.addEventListener('click', () => import('./lab.js').then(m => m.openLab()));
+        ca.appendChild(lab);
+        if (p.unlimited || p.pro) {
+          const key = el('button', { className: 'btn' }, 'Zugangsschlüssel kopieren');
+          key.addEventListener('click', () => { const tk = api.getToken(); if (!tk) return showToast('Dieser Server hat keine Anmeldung: kein Schlüssel nötig.'); navigator.clipboard?.writeText(tk); showToast('Schlüssel kopiert. Gültig 30 Tage, danach hier neu kopieren.'); });
+          ca.appendChild(key);
+        }
+        hint.innerHTML = 'Die Programme für Windows, macOS und Linux findest du unter <b>Einstellungen → Apps</b>. Dann <code>aicore-coder login</code> und den Schlüssel einfügen.';
       }
       wrap.querySelector('#pro-redeem')?.addEventListener('click', async () => {
         const input = wrap.querySelector('#pro-code');

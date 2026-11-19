@@ -2,6 +2,7 @@ import { branchInfo } from '../js/branches.js';
 import { isTableName } from '../js/dataprofile.js';
 import { renderMarkdown, escapeHtml, extractCodeBlocks } from '../js/ui.js';
 import { messageExports } from '../js/formatsMeta.js';
+import { ico } from '../js/icons.js';
 
 // Datei-Menü unter einer Antwort schließen, wenn man daneben klickt (einmal für die ganze Seite).
 if (typeof document !== 'undefined' && !globalThis.__aicoreExportClose) {
@@ -38,10 +39,10 @@ function statsLine(m) {
 function filesRow(attachments) {
   if (!attachments?.length) return '';
   return `<div class="message-files">${attachments.map((a, i) => isTableName(a.name) && a.text
-    ? `<span class="file-chip">📊 <span class="fc-name">${escapeHtml(a.name)}</span><button type="button" class="fc-analyze" data-analyze="${i}">Ansehen</button></span>`
+    ? `<span class="file-chip">${ico('chart-column')} <span class="fc-name">${escapeHtml(a.name)}</span><button type="button" class="fc-analyze" data-analyze="${i}">Ansehen</button></span>`
     : a.preview
     ? `<span class="file-chip"><img src="${a.preview}" alt=""><span class="fc-name">${escapeHtml(a.name)}</span></span>`
-    : `<span class="file-chip" ${a.text ? '' : 'title="Kein Text gelesen — die KI sieht nur den Dateinamen"'}>📄 <span class="fc-name">${escapeHtml(a.name)}</span>${a.text ? '' : '<span class="fc-warn">⚠</span>'}</span>`).join('')}</div>`;
+    : `<span class="file-chip" ${a.text ? '' : 'title="Kein Text gelesen — die KI sieht nur den Dateinamen"'}>${ico('file-lines')} <span class="fc-name">${escapeHtml(a.name)}</span>${a.text ? '' : '<span class="fc-warn">⚠</span>'}</span>`).join('')}</div>`;
 }
 
 const sourcesRow = (m) => {
@@ -105,10 +106,10 @@ export function renderMessageEl(message, h = {}) {
 
   // Klicks auf Code-Knöpfe: ein Listener, der auch beim Streamen (neuer innerHTML) erhalten bleibt
   content.addEventListener('click', (e) => {
-    const b = e.target.closest('[data-code-copy],[data-code-preview],[data-code-open],[data-code-download],[data-code-export],[data-code-run]');
+    const b = e.target.closest('[data-code-copy],[data-code-preview],[data-code-open],[data-code-download],[data-code-export],[data-code-run],[data-code-linux]');
     if (!b) return;
     const block = b.closest('.code-block');
-    const type = ['copy', 'preview', 'open', 'download', 'export', 'run'].find(t => b.hasAttribute(`data-code-${t}`));
+    const type = ['copy', 'preview', 'open', 'download', 'export', 'run', 'linux'].find(t => b.hasAttribute(`data-code-${t}`));
     h.onCode?.(type, { code: block.querySelector('code').textContent, lang: block.dataset.lang, file: block.dataset.file }, b, message);
   });
 
@@ -169,7 +170,7 @@ export function renderMessageEl(message, h = {}) {
     if (message.memoryHint) {
       const chip = document.createElement('div');
       chip.className = 'mem-chip';
-      chip.innerHTML = `<span>💡 Merken: <b>${escapeHtml(message.memoryHint)}</b></span><button type="button" data-act="save">Merken</button><button type="button" class="x" data-act="dismiss" aria-label="Verwerfen">✕</button>`;
+      chip.innerHTML = `<span>${ico('lightbulb')} Merken: <b>${escapeHtml(message.memoryHint)}</b></span><button type="button" data-act="save">Merken</button><button type="button" class="x" data-act="dismiss" aria-label="Verwerfen">✕</button>`;
       chip.addEventListener('click', (e) => {
         const act = e.target.closest('[data-act]')?.dataset.act;
         if (act === 'save') h.onSaveMemory?.(message);

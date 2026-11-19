@@ -1,6 +1,7 @@
 // ui.js — Hilfen für die Oberfläche: Markdown mit Code-Hervorhebung, Datum, Download, Hinweise.
 
 import { formatsFor, FORMAT_LABEL } from './formatsMeta.js';
+import { ico, icoBrand } from './icons.js';
 
 export function escapeHtml(s) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -82,6 +83,8 @@ export function highlight(code, lang) {
 
 // ---------- Code-Blöcke ----------
 export const EXT = { js: 'js', javascript: 'js', jsx: 'jsx', ts: 'ts', typescript: 'ts', tsx: 'tsx', py: 'py', python: 'py', html: 'html', css: 'css', json: 'json', sh: 'sh', bash: 'sh', shell: 'sh', svg: 'svg', md: 'md', markdown: 'md', java: 'java', c: 'c', cpp: 'cpp', cs: 'cs', go: 'go', rs: 'rs', rust: 'rs', php: 'php', sql: 'sql', yaml: 'yml', yml: 'yml', xml: 'xml', vue: 'vue', txt: 'txt', csv: 'csv', tsv: 'tsv', ics: 'ics', vcf: 'vcf', ini: 'ini', toml: 'toml', rb: 'rb', swift: 'swift', kt: 'kt', dart: 'dart', lua: 'lua', tex: 'tex', bat: 'bat', ps1: 'ps1', xlsx: 'xlsx', pptx: 'pptx', pdf: 'pdf', docx: 'docx', zip: 'zip' };
+export const LINUX_LANGS = ['python', 'py', 'javascript', 'js', 'node', 'bash', 'sh', 'shell', 'c', 'cpp', 'c++', 'go', 'ruby', 'rb', 'php', 'java'];
+export const isLinuxRunnable = (lang) => LINUX_LANGS.includes(String(lang || '').toLowerCase());
 export const isRunnable = (lang) => ['js', 'javascript', 'mjs'].includes(String(lang || '').toLowerCase());
 export const isPreviewable = (lang) => ['html', 'svg', 'mermaid'].includes(String(lang || '').toLowerCase());
 
@@ -96,12 +99,13 @@ function blockHtml(info, code, open) {
   const { lang, file } = parseFenceInfo(info);
   const label = lang || 'text';
   const lines = code.split('\n').length;
-  const exports = open ? '' : formatsFor(lang).map(f => `<button type="button" class="primary" data-code-export data-fmt="${f}" title="Als ${FORMAT_LABEL[f]}-Datei speichern">⬇ ${FORMAT_LABEL[f]}</button>`).join('');
+  const exports = open ? '' : formatsFor(lang).map(f => `<button type="button" class="primary" data-code-export data-fmt="${f}" title="Als ${FORMAT_LABEL[f]}-Datei speichern">${ico('arrow-down')} ${FORMAT_LABEL[f]}</button>`).join('');
   const actions = open ? '' : `
         <div class="code-actions">
           ${exports}
-          ${isRunnable(lang) ? '<button type="button" class="primary" data-code-run title="Code abgeschottet ausführen">▶ Ausführen</button>' : ''}
-          ${isPreviewable(lang) ? '<button type="button" class="primary" data-code-preview title="Vorschau rechts anzeigen">▶ Vorschau</button>' : (lines >= 12 ? '<button type="button" data-code-open title="Rechts im Panel öffnen">Öffnen</button>' : '')}
+          ${isLinuxRunnable(lang) ? `<button type="button" data-code-linux title="Im Linux-Testlabor ausführen (AI Core Pro)">${icoBrand('linux')} Linux</button>` : ''}
+          ${isRunnable(lang) ? `<button type="button" class="primary" data-code-run title="Code abgeschottet ausführen">${ico('play')} Ausführen</button>` : ''}
+          ${isPreviewable(lang) ? `<button type="button" class="primary" data-code-preview title="Vorschau rechts anzeigen">${ico('play')} Vorschau</button>` : (lines >= 12 ? '<button type="button" data-code-open title="Rechts im Panel öffnen">Öffnen</button>' : '')}
           <button type="button" data-code-download title="Als Datei speichern">Laden</button>
           <button type="button" data-code-copy>Kopieren</button>
         </div>`;
