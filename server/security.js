@@ -191,8 +191,8 @@ export function securityHeaders(req, res, next) {
   res.setHeader('Content-Security-Policy', [
     "default-src 'self'",
     `script-src 'self'${fb ? ' https://www.gstatic.com https://apis.google.com' : ''}${phone ? ' https://www.google.com/recaptcha/' : ''}`,
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "font-src 'self' https://fonts.gstatic.com",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com",
+    "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com",
     "img-src 'self' data: blob:",
     `connect-src 'self'${fb ? ' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com' : ''}`,
     `frame-src 'self'${fb ? ` https://${authDomain} https://*.firebaseapp.com https://accounts.google.com https://*.web.app${phone ? ' https://www.google.com' : ''}` : ''}`,
@@ -205,7 +205,7 @@ export function securityHeaders(req, res, next) {
 
 // ---------- CORS: erlaubte Seiten, die den Server von außen ansprechen (z. B. die GitHub-Seite) ----------
 // ALLOWED_ORIGINS in der .env, kommagetrennt; „*“ vor dem Punkt als Platzhalter: https://*.github.io
-const originPatterns = () => String(process.env.ALLOWED_ORIGINS ?? 'https://*.github.io').split(',').map(v => v.trim().toLowerCase()).filter(Boolean);
+const originPatterns = () => String(process.env.ALLOWED_ORIGINS ?? 'https://*.github.io,aicore://app').split(',').map(v => v.trim().toLowerCase()).filter(Boolean);
 
 export function originAllowed(origin) {
   const o = String(origin || '').toLowerCase().replace(/\/+$/, '');

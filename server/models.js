@@ -4,13 +4,16 @@ import fs from 'fs';
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,99}$/;
 export const validName = (n) => typeof n === 'string' && NAME.test(n) && !n.includes('..');
 
+// Die Basismodelle der AI-Core-Reihe (siehe deploy/models/models.list). Größen sind Richtwerte.
 export const SUGGESTED = [
-  { name: 'llama3.2:3b', note: 'kleiner Allrounder, etwa 2 GB' },
-  { name: 'qwen2.5:3b', note: 'Allrounder, etwa 2 GB' },
-  { name: 'gemma3:4b', note: 'kann auch Bilder ansehen, etwa 3 GB' },
-  { name: 'deepseek-r1:1.5b', note: 'denkt vor dem Antworten nach, etwa 1 GB' },
-  { name: 'moondream', note: 'beschreibt Bilder, sehr klein' },
-  { name: 'llama3.2:1b', note: 'sehr schnell und sehr klein, etwa 1 GB' },
+  { name: 'qwen3.5:2b', note: 'Lite: klein und schnell' },
+  { name: 'qwen3.5:9b', note: 'Allrounder: etwa 7 GB' },
+  { name: 'gemma4:12b', note: 'Allrounder Plus: etwa 8 GB' },
+  { name: 'deepseek-r1:8b', note: 'Denker: etwa 5 GB' },
+  { name: 'qwen3-coder:30b', note: 'Coder: etwa 19 GB' },
+  { name: 'qwen3-vl:8b', note: 'Vision: versteht Bilder, etwa 6 GB' },
+  { name: 'gpt-oss:20b', note: 'Analyst: etwa 14 GB' },
+  { name: 'gemma4:26b', note: 'Turbo: etwa 16 GB' },
 ];
 
 let job = null;

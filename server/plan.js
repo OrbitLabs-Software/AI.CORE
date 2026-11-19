@@ -57,7 +57,7 @@ export function planStatus(key, { unlimited = false, now = Date.now() } = {}) {
 
 // ---------- Token-Guthaben ----------
 // Jede Aktion kostet Token (Wörter, Bilder, Videosekunden …). Das Guthaben gilt für ein Zeitfenster, das mit der
-// ersten Nutzung beginnt und nach Ablauf zurückgesetzt wird: Gratis 4 000 Token alle 4 Stunden, Pro 10 000 alle 2 Stunden.
+// ersten Nutzung beginnt und nach Ablauf zurückgesetzt wird: Gratis 10 000 Token alle 2 Stunden, Pro 30 000 alle 2 Stunden.
 // Intern wird in Hundertstel-Token gerechnet (0,25 Token = 25), damit keine Rundungsfehler entstehen.
 export const tokensEnabled = () => process.env.TOKENS !== 'false';
 const fnum = (v, d) => { const n = Number(String(v ?? '').replace(',', '.')); return v !== undefined && v !== '' && Number.isFinite(n) && n >= 0 ? n : d; };
@@ -79,8 +79,8 @@ export function costs() {
 export function tokenPlan(pro) {
   const e = process.env;
   return pro
-    ? { max: fnum(e.PRO_TOKENS, 10000), resetHours: fnum(e.PRO_RESET_HOURS, 2) }
-    : { max: fnum(e.FREE_TOKENS, 4000), resetHours: fnum(e.FREE_RESET_HOURS, 4) };
+    ? { max: fnum(e.PRO_TOKENS, 30000), resetHours: fnum(e.PRO_RESET_HOURS, 2) }
+    : { max: fnum(e.FREE_TOKENS, 10000), resetHours: fnum(e.FREE_RESET_HOURS, 2) };
 }
 export const wordCount = (s) => (String(s ?? '').match(/\S+/g) || []).length;
 

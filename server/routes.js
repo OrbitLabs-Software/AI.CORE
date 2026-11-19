@@ -18,7 +18,9 @@ import { createPreview } from './preview.js';
 import { createShare, readShare, deleteShare, shareEnabled } from './share.js';
 import { generateImage, imageEnabled } from './image.js';
 import { startVideo, videoStatus, videoFile, videoEnabled } from './video.js';
-import { tokenStatus, planStatus, reserve, refund, grantPro, revokePro, proInfo, redeemCode, codesEnabled, spendTokens, refundTokens, costs, wordCount } from './plan.js';
+import * as sandbox from './sandbox.js';
+import { catalogOn, parseCatalog, unalias, publicModels, defaultPublic, allowed as tierAllowed, withIdentity } from './catalog.js';
+import { isPro, tokenStatus, planStatus, reserve, refund, grantPro, revokePro, proInfo, redeemCode, codesEnabled, spendTokens, refundTokens, costs, wordCount } from './plan.js';
 import { webSearch, searchEnabled, readPage } from './search.js';
 import * as library from './library.js';
 import { startPull, pullStatus, cancelPull, deleteModel, SUGGESTED, diskFree } from './models.js';
@@ -30,7 +32,7 @@ import { record, snapshot } from './metrics.js';
 import { parseApiKeys, checkApiKey, errorBody, toInternal, createThinkFilter, completionId, chunk, completion, modelList, estimateTokens } from './openai.js';
 import { stripeEnabled, createCheckout, confirmCheckout, subscriptionState, createPortal } from './stripe.js';
 
-export const VERSION = '5.1.0';
+export const VERSION = '5.4.0';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024, files: 1 } });
 
@@ -62,7 +64,7 @@ router.get('/config', (req, res) => {
   const cfg = getConfig();
   res.json({
     version: VERSION, provider: cfg.provider,
-    features: { search: searchEnabled(), image: imageEnabled(), video: videoEnabled(), share: shareEnabled(), pro: stripeEnabled() || codesEnabled(), api: apiKeys().length > 0, sync: syncEnabled(), library: library.libraryEnabled(), read: searchEnabled() },
+    features: { search: searchEnabled(), image: imageEnabled(), video: videoEnabled(), share: shareEnabled(), pro: stripeEnabled() || codesEnabled(), api: apiKeys().length > 0, sync: syncEnabled(), coder: sandbox.sandboxEnabled(), library: library.libraryEnabled(), read: searchEnabled() },
     legal: legalLinks(), owner: isAuthenticated(req) && isOwner(req),
     ...authInfo(req),
   });
@@ -82,19 +84,24 @@ router.use(requireAuth);
 
 router.get('/health', async (req, res) => {
   const cfg = getConfig();
-  const { models, status, defaultModel } = await listAllModels(cfg);
-  const ollama = status.ollama;
+  const all = await listAllModels(cfg);
+  const acct = accountOf(req), pro = acct.unlimited || isPro(acct.key);
+  const hide = catalogOn();                               // mit Katalog: nur Anzeigenamen, nie die Namen der Basismodelle
+  const models = hide ? publicModels(all.models, { pro }) : all.models;
+  const defaultModel = hide ? defaultPublic(models) : all.defaultModel;
+  const ollama = all.status.ollama;
+  const status = hide ? { ollama: { enabled: ollama.enabled, reachable: ollama.reachable } } : all.status;
   res.json({
     ok: true,
     version: VERSION,
-    provider: cfg.provider,
+    provider: hide ? 'core' : cfg.provider,
     mode: models.length ? 'live' : 'demo',
     model: defaultModel,
     models,
     status,
     reachable: ollama.enabled ? ollama.reachable : null,
-    loaded: ollama.loaded || [],
-    ...(ollama.enabled && !ollama.reachable ? { error: ollama.error } : {}),
+    loaded: hide ? [] : (ollama.loaded || []),
+    ...(!hide && ollama.enabled && !ollama.reachable ? { error: ollama.error } : {}),
     memory: memoryEnabled(),
     limits: { numCtx: cfg.numCtx, maxTokens: cfg.maxTokens, cloudContext: cfg.cloudContext },
   });
@@ -103,12 +110,17 @@ router.get('/health', async (req, res) => {
 router.get('/models', async (req, res) => {
   const cfg = getConfig();
   const info = await listAllModels(cfg);
+  if (catalogOn() && !isOwner(req)) {
+    const acct = accountOf(req), models = publicModels(info.models, { pro: acct.unlimited || isPro(acct.key) });
+    return res.json({ models, status: { ollama: { enabled: info.status.ollama.enabled, reachable: info.status.ollama.reachable } }, defaultModel: defaultPublic(models), admin: false });
+  }
   res.json({ ...info, admin: cfg.ollamaEnabled && cfg.modelAdmin });
 });
 
 // Modell vorab in den Speicher laden (z. B. beim Wechsel des Modells im Chat).
 router.post('/warmup', adminLimiter, (req, res) => {
-  const target = resolveModel(req.body?.model);
+  const alias = unalias(req.body?.model);
+  const target = resolveModel(alias ? alias.id : (catalogOn() ? '' : req.body?.model));
   if (target.provider === 'ollama') warmUpModel(target.model).catch(e => console.warn('[warmup]', e.message));
   res.status(202).json({ ok: true });
 });
@@ -291,7 +303,7 @@ function returnBase(req) {
 router.get('/plan', lightLimiter, async (req, res) => {
   const acct = accountOf(req);
   await syncStripe(acct.key);
-  res.json({ ...planStatus(acct.key, acct), billing: { stripe: stripeEnabled(), codes: codesEnabled(), price: process.env.PRO_PRICE_LABEL || '16,99 € / Monat' } });
+  res.json({ ...planStatus(acct.key, acct), billing: { stripe: stripeEnabled(), codes: codesEnabled(), price: process.env.PRO_PRICE_LABEL || '16,99 € / Monat' }, coder: { releases: process.env.RELEASES_URL || '', sandbox: sandbox.sandboxEnabled() } });
 });
 
 router.post('/pro/checkout', proLimiter, async (req, res) => {
@@ -351,8 +363,16 @@ router.post('/chat/stream', chatLimiter, async (req, res) => {
     return res.status(429).json({ error: 'Der Server bearbeitet gerade andere Anfragen. Bitte gleich erneut senden.' });
   }
 
-  // Token: deine neue Nachricht (Wörter) und Dateien, die jetzt zum ersten Mal analysiert werden, kosten vorab.
   const acct = accountOf(req);
+  const acctForModel = { pro: acct.unlimited || isPro(acct.key) };
+  let requested = typeof body.model === 'string' ? body.model.slice(0, 120) : undefined;
+  if (catalogOn()) {                                      // Kennung aus dem Browser in das echte Modell übersetzen, Stufe prüfen
+    const entry = unalias(requested);
+    if (!tierAllowed(entry, acctForModel)) return res.status(402).json({ error: `„${entry.name}“ gehört zu AI Core Pro (Einstellungen → Pro).`, pro: false });
+    const fallback = parseCatalog().find(m => m.tier === 'free') || parseCatalog()[0];
+    requested = entry ? entry.id : fallback?.rawId;
+  }
+  // Token: deine neue Nachricht (Wörter) und Dateien, die jetzt zum ersten Mal analysiert werden, kosten vorab.
   const lastUser = [...body.messages].reverse().find(m => m?.role === 'user');
   const c = costs();
   const analyzed = (Array.isArray(lastUser?.attachments) ? lastUser.attachments : []).reduce((n, a) => n + (typeof a?.text === 'string' ? wordCount(a.text.slice(0, 60000)) : 0), 0);
@@ -371,7 +391,7 @@ router.post('/chat/stream', chatLimiter, async (req, res) => {
     if (mem) { system = `${system}\n\n${mem}`; usedMemory = true; }
   }
   const temperature = Number.isFinite(body.temperature) ? Math.min(1.5, Math.max(0, body.temperature)) : undefined;
-  const requested = typeof body.model === 'string' ? body.model.slice(0, 120) : undefined;
+  system = withIdentity(system);
   const target = resolveModel(requested, cfg);
   const ctx = buildContext({ messages: body.messages, budgetTokens: contextBudget(cfg, system, target.provider), model: target.model });
 
@@ -445,6 +465,52 @@ router.post('/library/search', libLimiter, (req, res) => {
   if (!library.libraryEnabled()) return libOff(res);
   const budget = Math.min(12000, Math.max(500, Number(req.body?.budget) || 4000));
   res.json(library.search(accountOf(req).key, String(req.body?.query || '').slice(0, 500), budget));
+});
+
+// ---------- Coder Ultimate: Linux-Testlabor (nur Pro) ----------
+const coderLimiter = rateLimit({ windowMs: 60 * 1000, max: 40, message: 'Zu viele Anfragen. Bitte kurz warten.' });
+const proOnly = (req, res) => {
+  const acct = accountOf(req);
+  if (acct.unlimited || isPro(acct.key)) return acct;
+  res.status(402).json({ error: 'Coder Ultimate gehört zu AI Core Pro (16,99 € im Monat): Einstellungen → Pro.', pro: false });
+  return null;
+};
+router.get('/coder/status', coderLimiter, async (req, res) => {
+  const acct = accountOf(req), pro = acct.unlimited || isPro(acct.key);
+  res.json({ pro, ...(await sandbox.status()), limits: { files: sandbox.LIMITS.files, timeoutSec: sandbox.LIMITS.timeoutMs() / 1000 } });
+});
+router.get('/coder/files', coderLimiter, (req, res) => { const a = proOnly(req, res); if (a) res.json({ files: sandbox.listFiles(a.key) }); });
+router.get('/coder/file', coderLimiter, (req, res) => {
+  const a = proOnly(req, res); if (!a) return;
+  const r = sandbox.readFile(a.key, req.query.path);
+  res.status(r.status || 200).json(r);
+});
+router.post('/coder/files', coderLimiter, (req, res) => {
+  const a = proOnly(req, res); if (!a) return;
+  const r = sandbox.writeFiles(a.key, req.body?.files);
+  res.status(r.status || 200).json(r);
+});
+router.delete('/coder/files', coderLimiter, (req, res) => { const a = proOnly(req, res); if (a) { sandbox.reset(a.key); res.json({ ok: true }); } });
+router.post('/coder/run', coderLimiter, async (req, res) => {
+  const a = proOnly(req, res); if (!a) return;
+  if (Array.isArray(req.body?.files) && req.body.files.length) {
+    const w = sandbox.writeFiles(a.key, req.body.files);
+    if (w.error) return res.status(w.status).json(w);
+  }
+  record('coder', memKey(req));
+  const r = await sandbox.run(a.key, req.body?.command, { timeoutSec: Number(req.body?.timeout), network: Boolean(req.body?.network) });
+  res.status(r.status || 200).json(r);
+});
+
+router.post('/coder/screenshot', coderLimiter, async (req, res) => {
+  const a = proOnly(req, res); if (!a) return;
+  if (Array.isArray(req.body?.files) && req.body.files.length) {
+    const w = sandbox.writeFiles(a.key, req.body.files);
+    if (w.error) return res.status(w.status).json(w);
+  }
+  record('coder', memKey(req));
+  const r = await sandbox.screenshot(a.key, req.body?.command, { delay: Number(req.body?.delay) });
+  res.status(r.status || 200).json(r);
 });
 
 // ---------- Geräte-Abgleich ----------
@@ -551,7 +617,7 @@ openaiRouter.post('/chat/completions', async (req, res) => {
   if (activeChats >= MAX_CONCURRENT) return res.status(429).json(errorBody('Der Server bearbeitet gerade andere Anfragen. Bitte gleich erneut senden.', 'rate_limit_error'));
 
   const cfg = getConfig();
-  const system = r.system || cfg.systemPrompt;   // Erinnerungen der Konten werden hier bewusst nie mitgeschickt
+  const system = withIdentity(r.system || cfg.systemPrompt);   // Erinnerungen der Konten werden hier bewusst nie mitgeschickt
   const target = resolveModel(r.model, cfg);
   const ctx = buildContext({ messages: r.messages, budgetTokens: contextBudget(cfg, system, target.provider), model: target.model });
   const id = completionId(), created = Math.floor(Date.now() / 1000), modelId = r.model || `${target.provider}/${target.model}`;

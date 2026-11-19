@@ -75,6 +75,7 @@ export function resolveModel(requested, cfg = getConfig()) {
       const think = name.endsWith('+think');
       return { provider: 'cloud', model: think ? name.slice(0, -6) : name, think };
     }
+    if (prefix === 'ollama' && name.endsWith('+nothink')) return { provider: 'ollama', model: name.slice(0, -8), think: false, noThink: true };
     return { provider: prefix, model: name, think: false };
   }
   // Ohne Präfix: nur echte Namen übernehmen, Platzhalter ("core-large") ignorieren
@@ -137,7 +138,7 @@ export async function streamAiResponse({ messages, model, system, temperature },
   const sys = system || cfg.systemPrompt;
   const target = resolveModel(model, cfg);
   try {
-    if (target.provider === 'ollama' && cfg.ollamaEnabled) return await streamOllama(cfg, messages, target.model, sys, temperature, onDelta, signal, onMeta);
+    if (target.provider === 'ollama' && cfg.ollamaEnabled) return await streamOllama(cfg, messages, target.model, sys, temperature, onDelta, signal, onMeta, target.noThink);
     if (target.provider === 'cloud' && cfg.cloudEnabled) return await streamCloud(cfg, messages, target, sys, temperature, onDelta, signal, onMeta);
     if (target.provider === 'anthropic' && cfg.anthropicEnabled) return await streamAnthropic(cfg, messages, sys, temperature, onDelta, signal, onMeta);
   } catch (e) {
@@ -236,7 +237,7 @@ function buildOllamaMessages(system, model, messages) {
   return out;
 }
 
-async function streamOllama(cfg, messages, requestedModel, system, temperature, onDelta, clientSignal, onMeta) {
+async function streamOllama(cfg, messages, requestedModel, system, temperature, onDelta, clientSignal, onMeta, noThink = false) {
   const model = requestedModel || cfg.ollamaModel;
 
   const ctrl = new AbortController();
@@ -252,6 +253,7 @@ async function streamOllama(cfg, messages, requestedModel, system, temperature, 
         model,
         stream: true,
         keep_alive: cfg.ollamaKeepAlive,
+        ...(noThink ? { think: false } : {}),          // schnelle Modelle: nicht erst lange nachdenken
         options: { num_ctx: cfg.numCtx, num_predict: cfg.maxTokens, temperature: temperature ?? cfg.temperature },
         messages: buildOllamaMessages(system, model, messages),
       }),
@@ -260,10 +262,14 @@ async function streamOllama(cfg, messages, requestedModel, system, temperature, 
       const detail = await res.text().catch(() => '');
       throw new Error(`HTTP ${res.status} ${detail.slice(0, 120)}`);
     }
+    let thinking = false;   // neuere Ollama-Versionen liefern das Nachdenken getrennt (message.thinking): als Denkblock weitergeben
     await readNdjson(res.body, (json) => {
       if (json.error) throw new Error(json.error);
+      const thought = json?.message?.thinking;
+      if (thought) { if (!thinking) { thinking = true; onDelta('<think>', { demo: false }); } onDelta(thought, { demo: false }); }
       const text = json?.message?.content;
-      if (text) onDelta(text, { demo: false });
+      if (text) { if (thinking) { thinking = false; onDelta('</think>', { demo: false }); } onDelta(text, { demo: false }); }
+      if (json.done && thinking) { thinking = false; onDelta('</think>', { demo: false }); }
       if (json.done && json.eval_count) {
         const evalMs = (json.eval_duration || 0) / 1e6;
         onMeta({

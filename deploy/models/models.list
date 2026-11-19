@@ -1,0 +1,19 @@
+# name | Basismodell (Ollama) | Temperatur | Kontext | Profil | Arbeitsspeicher ungefähr
+# Profile: denken, allround, coder, vision, flink
+# Neuere Modelle (Qwen 3.5/3.8, Gemma 4, gpt-oss, Qwen3-Coder, Qwen3-VL) brauchen eine aktuelle Ollama-Version: Ollama aktualisieren!
+aicore-lite          | qwen3.5:2b         | 0.6  | 4096 | flink    | 4 GB
+aicore-flink         | qwen3.5:4b         | 0.6  | 4096 | flink    | 6 GB
+aicore-allround      | qwen3.5:9b         | 0.6  | 8192 | allround | 12 GB
+aicore-allround-plus | gemma4:12b         | 0.6  | 8192 | allround | 16 GB
+aicore-allround-max  | qwen3.8:27b        | 0.6  | 8192 | allround | 24 GB
+aicore-turbo         | gemma4:26b         | 0.6  | 8192 | allround | 24 GB
+aicore-denker        | deepseek-r1:8b     | 0.6  | 6144 | denken   | 8 GB
+aicore-denker-plus   | deepseek-r1:14b    | 0.6  | 8192 | denken   | 16 GB
+aicore-denker-max    | deepseek-r1:32b    | 0.6  | 8192 | denken   | 32 GB
+aicore-analyst       | gpt-oss:20b        | 0.8  | 8192 | denken   | 20 GB
+aicore-mathe         | phi4:14b           | 0.4  | 8192 | denken   | 16 GB
+aicore-coder-klein   | qwen2.5-coder:7b   | 0.2  | 8192 | coder    | 8 GB
+aicore-coder         | qwen3-coder:30b    | 0.2  | 8192 | coder    | 24 GB
+aicore-coder-plus    | devstral-small-2   | 0.2  | 8192 | coder    | 20 GB
+aicore-vision-klein  | qwen3-vl:2b        | 0.4  | 4096 | vision   | 4 GB
+aicore-vision        | qwen3-vl:8b        | 0.4  | 4096 | vision   | 10 GB
