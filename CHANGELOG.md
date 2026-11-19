@@ -1,19 +1,39 @@
 # Änderungen
 
-## 5.2.0 — Coder Ultimate und Desktop-Apps
+## 5.4.0 — Neue Modellfamilien
 
-- **Coder Ultimate (Pro):** Programmierassistent für die Konsole als Programm für Windows (`.exe`), Mac und Linux (Ordner `coder/`). Er arbeitet im aktuellen Ordner (lesen, schreiben, Befehle) und testet Programme in einem eigenen, abgeschotteten Linux (Docker, ohne Netzwerk, mit Speicher- und CPU-Grenze). Dateien und Befehle werden vorher erfragt (`--auto`, `--yes` lassen das weg, `--net` erlaubt Netzwerk im Linux). Er nutzt dein Token-Guthaben.
-- **Coder-Schlüssel:** Einstellungen → Pro erzeugt einen Schlüssel (365 Tage, nur für den Coder, jederzeit widerrufbar). Der Server prüft bei jeder Anfrage, ob das Konto noch Pro hat. Neu: `POST/DELETE /api/coder/key`, `GET /api/coder/me`.
-- **AI Core als Desktop-App** (Ordner `desktop/`, Electron): `.exe` (Windows), `.dmg` (Mac), `.AppImage` und `.deb` (Linux). Die App lädt die Oberfläche von deinem Server; die Adresse ist änderbar (Strg/Cmd+Umschalt+S).
-- **Bauen:** `.github/workflows/build-apps.yml` baut alles auf GitHub (Actions → „Programme bauen“, oder Tag `v5.2.0` setzen: dann erscheinen die Dateien unter „Releases“). Ohne Zertifikate: Windows und macOS zeigen beim ersten Start eine Warnung.
+- **16 Modelle in fünf Gruppen** auf Basis der neueren Familien (Qwen 3.5/3.8, Gemma 4, gpt-oss, Qwen3-Coder, Devstral, Qwen3-VL, DeepSeek-R1 8B): neues kostenloses Lite, Turbo und Analyst, zwei Coder-Stufen, zwei Bild-Modelle.
+- **Denkmodus:** getrennte Denk-Ausgabe neuerer Ollama-Versionen wird als Denkblock angezeigt (vorher ging sie verloren); schnelle Modelle (Lite, Flink, Allrounder) denken nicht erst lange (`schnell` im Katalog).
+- Tests für Katalog, Denkblock und `+nothink`.
 
-## 5.1.0 — Token-Guthaben
+## 5.3.1 — Mehr Pro-Modelle
 
-- **Nutzung in Token statt Monatszähler:** Wort im Chat 0,25 · Wort in Datei 0,5 · analysiertes Wort 0,75 · Bild 45,9 · Sekunde Video 15,9 · Sekunde Musik 10 (Preis hinterlegt, noch keine Musikfunktion).
-- **Gratis:** 4 000 Token, Zurücksetzen alle 4 Stunden. **Pro:** 10 000 Token, Zurücksetzen alle 2 Stunden, 16,99 € pro Monat per Stripe.
-- Token-Anzeige in der oberen Leiste, Pro-Seite mit Guthaben, Tarifvergleich und Preisliste.
-- Fehlgeschlagene Bilder und Videos geben ihre Token zurück; Antworten werden nach den erzeugten Wörtern abgebucht.
-- Neu: `POST /api/tokens/analyze`; Upload meldet die abgebuchten Token. `FREE_*_PER_MONTH` und `PRO_*_PER_MONTH` entfallen, die Gesamt-Notbremse `*_MAX_PER_MONTH_TOTAL` bleibt.
+- Elf Modelle in fünf Gruppen (Kostenlos, Denken, Allrounder, Programmieren, Bilder); `deploy/models/models.list` und `create-models.sh list|NAME|all`. Es erscheinen nur installierte Modelle.
+- Modellauswahl nach Gruppen, gesperrte Pro-Modelle springen sauber zurück.
+- Katalog-Test prüft, dass `.env`-Katalog und `models.list` zusammenpassen und kein Basismodell im Browser auftaucht.
+
+## 5.3.0 — Stufen, Symbole, Anmeldung
+
+- **Gratis:** 10 000 Token, alle 2 Stunden neu. **Pro:** mehr Token, stärkere Modelle, Coder Ultimate.
+- **Modellkatalog:** Anzeigenamen statt Basismodell, neutrale Kennungen im Browser, Pro-Modelle serverseitig gesperrt; Modelfiles und Skript unter `deploy/models`.
+- **Font Awesome** statt Emojis in der ganzen Oberfläche.
+- **Anmeldung ohne Serveradresse:** keine Anzeige, kein Eingabefeld, nur „Erneut versuchen“ bei Verbindungsproblemen.
+- **Apps-Seite** mit Download-Knöpfen für Windows, macOS, Linux, Coder Ultimate und Installation auf iPhone/iPad/Android.
+- **Linux-Testlabor:** Bildschirm-Test für Programme mit Fenster (Screenshot), `aicore-coder chat`.
+- Aufgeräumtes Layout (ruhigeres Kopfband, kürzere Startseite).
+
+## 5.2.0 — Coder Ultimate und Apps
+
+- **Coder Ultimate (Pro):** Programmier-Agent für die Konsole (`cli/aicore-coder.cjs`), liest/schreibt Dateien im Projektordner, führt Befehle mit Erlaubnis aus, testet im Linux-Testlabor.
+- **Linux-Testlabor:** abgeschotteter Docker-Container auf dem Server (Konsole im Browser mit `/linux`, Knopf „🐧 Linux“ an Codeblöcken, Routen `/api/coder/*` nur für Pro).
+- **Apps:** AI Core als Programm (Electron) für Windows, macOS und Linux; GitHub-Workflow baut App und Coder Ultimate bei jedem Tag.
+- Die Pro-Seite zeigt Coder Ultimate, Schlüssel und Downloads. Desktop-App-Ursprung `aicore://app` ist standardmäßig erlaubt.
+
+## 5.1.0 — Token und Pro
+
+- **Nutzungslimit in Token:** Wort 0,25 · Bild 45,9 · Videosekunde 15,9 · Wort in Datei 0,50 · analysiertes Wort 0,75 · Musiksekunde 10 (alle Preise in der `.env` änderbar).
+- **Gratis:** 4 000 Token, alle 4 Stunden zurückgesetzt. **Pro:** 10 000 Token für 16,99 € im Monat, alle 2 Stunden zurückgesetzt (Stripe).
+- Token-Anzeige oben, neue Pro-Seite mit Guthaben, Tarifen und Preisliste. Bei Fehlschlag (Bild, Video) gibt es die Token zurück.
 
 ## 5.0.0 — Aurora
 

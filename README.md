@@ -103,13 +103,11 @@ Im Heimnetz geht alles über `http://192.168.1.190:3000`. Von unterwegs braucht 
 
 **Video über Hugging Face:** `HF_TOKEN` in der `.env` eintragen (Token mit Berechtigung „Inference Providers“) und auf dem Server `npm install @huggingface/inference` ausführen. Welche Modelle gerade Videos können, zeigt `https://huggingface.co/api/models?inference_provider=all&pipeline_tag=text-to-video`; das Modell steht in `HF_VIDEO_MODEL`. Ein Video kostet Guthaben beim Anbieter. Das kleine Gratis-Guthaben eines Kontos gilt für den ganzen Server, nicht pro Nutzer, und reicht nur für wenige Clips. Setze deshalb `VIDEO_MAX_PER_MONTH_TOTAL` auf eine Zahl, die dein Budget verträgt.
 
-**Token-Guthaben:** Alles, was jemand nutzt, kostet Token. Voreinstellung: Gratis 4 000 Token, Zurücksetzen alle 4 Stunden; Pro 10 000 Token für 16,99 € im Monat, Zurücksetzen alle 2 Stunden. Das Zeitfenster beginnt mit der ersten Nutzung nach dem Zurücksetzen. Preise: 1 Wort im Chat (Frage und Antwort) 0,25 · 1 Wort in einer hochgeladenen Datei 0,5 (beim Hochladen) · 1 analysiertes Wort 0,75 (beim Öffnen der Datenanalyse) · 1 Bild 45,9 · 1 Sekunde Video 15,9 · 1 Sekunde Musik 10. Alles lässt sich in der `.env` ändern (`FREE_TOKENS`, `PRO_TOKENS`, `*_RESET_HOURS`, `TOKEN_RATE_*`). Wer in `OWNER_UIDS` steht, hat keine Grenzen. Die Antwort im Chat wird nach den tatsächlich erzeugten Wörtern abgebucht, der Chat stoppt also nicht mitten im Satz; das Guthaben kann dabei nicht unter null fallen. Misslingt ein Bild oder Video, gibt es die Token zurück. Musik: Der Preis ist hinterlegt, eine Musikfunktion gibt es in AI Core noch nicht. Die Schnittstelle `/v1` für andere Programme zählt nicht mit.
-
-**Pro bezahlen (Stripe):** In Stripe ein Produkt „AI Core Pro“ mit dem Preis 16,99 € pro Monat (wiederkehrend) anlegen, die Preis-ID (`price_…`) als `STRIPE_PRICE_ID` und den geheimen Schlüssel als `STRIPE_SECRET_KEY` in die `.env`, `PRO_PRICE_LABEL=16,99 € pro Monat`, Server neu starten. Dann erscheint unter Einstellungen → Pro der Kaufknopf. Kündigen geht über „Abo verwalten“.
+**Kontingente:** Pro Konto und Kalendermonat. Voreinstellung gratis 1 Video und 10 Bilder, Pro 20 Videos und 200 Bilder. Wer in `OWNER_UIDS` steht, hat keine Grenzen.
 
 **Pro verkaufen mit Stripe:**
 1. In Stripe ein Produkt mit einem Abo-Preis anlegen, die Preis-ID (`price_...`) kopieren.
-2. In der `.env`: `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`, `PRO_PRICE_LABEL` (zum Beispiel `4,99 € / Monat`) und für den Livebetrieb `PUBLIC_URL` (deine GitHub-Seite).
+2. In der `.env`: `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`, `PRO_PRICE_LABEL` (`16,99 € / Monat`) und für den Livebetrieb `PUBLIC_URL` (deine GitHub-Seite).
 3. Im Stripe-Dashboard das Kundenportal einschalten, damit „Abo verwalten“ funktioniert.
 4. Erst im Testmodus ausprobieren (Testkarte 4242 4242 4242 4242).
 
@@ -206,12 +204,44 @@ ai-core/
 ```
 
 
-## Coder Ultimate und Desktop-Programme
+## Token und Pro
 
-**Bauen:** Die Programme entstehen auf GitHub. Auf GitHub unter „Actions“ den Ablauf „Programme bauen“ starten (oder einen Tag wie `v5.2.0` setzen, dann liegen die Dateien unter „Releases“). Ergebnis: Coder als `ai-core-coder-win.exe`, `-macos-arm64`, `-macos-x64`, `-linux`; AI Core als `.exe`, `.dmg`, `.AppImage` und `.deb`. Es wird nicht signiert, Windows (SmartScreen) und macOS warnen beim ersten Start.
+Jede Aktion kostet Token: **Wort im Chat 0,25** (deine Nachricht und die Antwort), **Bild 45,9**, **Video 15,9 pro Sekunde**, **Wort in einer hochgeladenen Datei 0,50**, **analysiertes Wort 0,75** (Dateitext, der mit einer Nachricht an die KI geht), **Musik 10 pro Sekunde** (Preis ist hinterlegt, die Funktion kommt später).
 
-**Coder benutzen:** In AI Core unter Einstellungen → Pro einen Schlüssel erzeugen (nur mit Pro). Dann im Projektordner `coder login` (Serveradresse und Schlüssel eintragen) und `coder` starten, oder direkt `coder "Schreibe ein Programm, das …"`. Tests laufen in einem Linux-Container und brauchen **Docker** (Windows/Mac: Docker Desktop, Linux: `docker.io`). Beim ersten Befehl baut Coder die Linux-Umgebung selbst (einige Minuten). Die Umgebung sieht nur den Projektordner, hat standardmäßig kein Netzwerk (`--net` erlaubt es, z. B. für `pip install`), höchstens 2 GB Speicher und 2 Prozessorkerne. Ohne `--auto` fragt Coder vor jedem Befehl und jeder Datei. `coder sandbox-reset` löscht die Umgebung. Lokal ohne Programm: `node coder/coder.mjs`.
+- **Gratis:** 10 000 Token, nach 2 Stunden wieder 10 000. Schnelles Modell „AI Core Lite“.
+- **Pro (16,99 € / Monat):** 30 000 Token (Richtwert von mir, änderbar mit `PRO_TOKENS`), nach 2 Stunden neu, **stärkere Modelle** und **Coder Ultimate** mit Linux-Testlabor.
+- Das Zeitfenster beginnt mit der ersten Nutzung. Der Besitzer und Server ohne Anmeldung haben keine Grenze.
+- Zahlung über Stripe: In Stripe ein Produkt mit einem monatlichen Preis von 16,99 € anlegen, die Preis-ID als `STRIPE_PRICE_ID` und den Geheimschlüssel als `STRIPE_SECRET_KEY` in die `.env`. Alle Preise und Mengen stehen in der `.env` (`TOKEN_COST_*`, `FREE_*`, `PRO_*`).
 
-**Grenzen:** Die Docker-Umgebung ist eine Schutzwand, aber kein Tresor: Führe nur Projekte aus, denen du traust. Coder schreibt nur im Projektordner, Befehle laufen nur im Linux, nie direkt auf deinem PC.
 
-**Desktop-App:** Startet mit einem Fenster, in dem du die Serveradresse einträgst (Voreinstellung `http://192.168.1.190:3000`). Sie lädt die Oberfläche vom Server, du meldest dich wie im Browser an. Lokal testen: `cd desktop && npm install && npm start`.
+## Coder Ultimate und die Apps (Pro)
+
+**Coder Ultimate** ist ein Programmier-Agent für die Konsole (Windows, macOS, Linux). Er liest und schreibt Dateien in deinem Projektordner, führt Befehle auf deinem Rechner nur mit deiner Erlaubnis aus (gefährliche wie `rm -rf /` lehnt er immer ab) und **testet Programme im Linux-Testlabor** auf deinem Server. Er gehört zu AI Core Pro; der Server prüft das bei jedem Aufruf.
+
+```bash
+aicore-coder login            # Server und Zugangsschlüssel speichern (Schlüssel: Einstellungen → Pro → Coder Ultimate)
+cd mein-projekt
+aicore-coder                  # Unterhaltung starten, oder:  aicore-coder "Baue einen Taschenrechner in Python und teste ihn"
+```
+
+In der Unterhaltung: `/test BEFEHL` (im Linux-Testlabor), `/reset`, `/clear`, `/status`, `/exit`. Mit `--yes` laufen lokale Befehle ohne Nachfrage.
+
+**Linux-Testlabor:** Programme laufen nie auf dem Server selbst, sondern in einem Docker-Container (Ubuntu 24.04, ohne Netz, 512 MB, 1 CPU, 30 s). Einrichten: `deploy/sandbox/README.md`. Im Browser: `/linux` im Chat oder der Knopf „🐧 Linux“ an jedem Codeblock.
+
+**Apps bauen (Windows `.exe`, macOS `.dmg`, Linux `.AppImage`/`.deb`):** Die Workflow-Datei `.github/workflows/release.yml` baut beim Push eines Tags alles auf GitHub und hängt es an ein Release:
+
+```bash
+git tag v5.2.0 && git push --tags
+```
+
+Danach in der `.env` `RELEASES_URL=https://github.com/DEIN-NAME/DEIN-REPO/releases/latest` eintragen, dann zeigt Einstellungen → Pro den Download-Knopf. Die Apps sind nicht signiert: Windows zeigt eine SmartScreen-Warnung („Trotzdem ausführen“), macOS verlangt Rechtsklick → Öffnen. Die AI-Core-App spricht mit deinem Server über `aicore://app`; das steht in `ALLOWED_ORIGINS` (Standard). Lokal bauen: `cd desktop && npm install && npm run dist`.
+
+
+## Modelle unter eigenem Namen, Stufen, Anmeldung (5.3)
+
+- **Modelle:** Nutzer sehen nur „AI Core Lite / Core / Ultra“, nie das Basismodell. Einrichtung: `deploy/models/README.md` (Skript `create-models.sh`, `MODEL_CATALOG` in der `.env`). Gratis-Nutzer sehen die Pro-Modelle mit „(Pro)“ und werden zur Pro-Seite geführt; der Server prüft die Stufe bei jeder Anfrage. Modelle laden und löschen kannst nur du (Einstellungen → Modelle verwalten).
+- **Server-Adresse:** Sie ist für Nutzer nirgends sichtbar oder änderbar. Die Anmeldung ist immer gleich. Die Adressen stehen in `src/js/config.js` oder in der Datei `aicore.config.json` neben `index.html` (`{ "servers": ["http://192.168.1.190:3000", "https://dein-server"] }`). Für dich als Betreiber: Seite einmal mit `?server=https://adresse` öffnen (`?server=reset` setzt zurück).
+- **Symbole:** Font Awesome Free statt Emojis. Offline/App: `npm install --save-dev @fortawesome/fontawesome-free && npm run icons` (Dateien landen in `public/vendor/fa`). Ohne diese Dateien lädt die Seite die Symbole von cdnjs.
+- **Apps für alle Geräte:** Einstellungen → Apps. Windows, macOS, Linux als Programm; iPhone, iPad und Android als installierte Web-App (Safari: Teilen → Zum Home-Bildschirm, Android: App installieren).
+- **Programme mit Fenster testen:** Im Linux-Testlabor „Bild aufnehmen“ (oder in der Konsole `/shot BEFEHL`): Das Programm läuft auf einem virtuellen Bildschirm, nach 3 Sekunden wird ein Bild aufgenommen. Dafür das Image neu bauen (`deploy/sandbox`).
+- **Konsole:** `aicore-coder chat` ist die reine Unterhaltung ohne Werkzeuge.

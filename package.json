@@ -1,13 +1,14 @@
 {
   "name": "ai-core",
-  "version": "5.2.0",
+  "version": "5.4.0",
   "description": "AI Core — eigene AI-Chat-Plattform von OrbitLabs (Ollama, DeepSeek, Erinnerungen, Coder-Vorschau)",
   "type": "module",
   "main": "server/server.js",
   "scripts": {
     "start": "node server/server.js",
     "dev": "node --watch server/server.js",
-    "test": "node --test test/*.test.mjs"
+    "test": "node --test test/*.test.mjs",
+    "icons": "node scripts/vendor-icons.mjs"
   },
   "optionalDependencies": {
     "@huggingface/inference": ">=3.6.0"
